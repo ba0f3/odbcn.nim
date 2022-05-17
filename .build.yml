@@ -1,0 +1,28 @@
+image: archlinux
+oauth: pages.sr.ht/PAGES:RW
+packages:
+- hut
+- choosenim
+- unixodbc
+environment:
+  site: mjaa.srht.site
+  CHOOSENIM_CHOOSE_VERSION: 1.6.2
+tasks:
+- configure: |
+  choosenim -y
+- build: |
+  export PATH=$HOME/.nimble/bin:$PATH
+  cd odbcn-nim
+  nimble build
+- gen_docs: |
+  export PATH=$HOME/.nimble/bin:$PATH
+  cd odbcn-nim
+  nim gen_docs.nims
+  tar -czf docs.tar.gz -C htmldocs .
+- upload: |
+  if [ $BUILD_SUBMITTER != "git.sr.ht" ]; then
+    echo "Skipping doc uploading for non-git.sr.ht build"
+    exit
+  fi
+  cd odbcn-nim
+  hut pages publish -d $site -s /odbcn-nim docs.tar.gz

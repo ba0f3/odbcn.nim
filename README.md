@@ -14,8 +14,8 @@ for row in conn.exec "select * from MyTable":
 * [Project page](https://sr.ht/~mjaa/odbcn-nim/)
 * [Repo](https://git.sr.ht/~mjaa/odbcn-nim)
 
-See [the docs](https://mjaa.srht.site/odbcn-nim) for in-depth manual to the
-various features and API reference.
+See [the docs](https://mjaa.srht.site/odbcn-nim/odbcn.html) for in-depth manual
+to the various features and API reference.
 
 If you encounter issues, please submit a ticket
 [here](https://todo.sr.ht/~mjaa/odbcn-nim).

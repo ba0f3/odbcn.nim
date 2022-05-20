@@ -4,11 +4,8 @@
 ## compile-time, as opposed to `system/widestrs.newWideCString`, which uses raw
 ## allocation. Raw allocations are not permitted in nimvm.
 
-import system/widestrs {.all.} except UNI_REPLACEMENT_CHAR
+import system/widestrs {.all.}
 import std/unicode
-
-const
-    UNI_REPLACEMENT_CHAR = 0xFFFD'i16.Utf16Char
 
 proc utf8To16*(s: string): seq[Utf16Char] =
     for chRune in runes(s):

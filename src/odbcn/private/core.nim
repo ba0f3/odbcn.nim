@@ -1574,6 +1574,17 @@ template prep*(conn: OdbcConn, qry: static string,
 iterator listDrivers*(
     env = globalOdbcEnv,
 ): tuple[name, attrs: string] {.tags: [ReadIOEffect].} =
+    ## Iterate over all ODBC drivers on the system. On Windows, these are
+    ## defined in the registry. On Linux with unixodbc, these are defined in
+    ## "/etc/odbcinst.ini".
+    ##
+    ## The `name` field is the ODBC driver name. This is used as value to the
+    ## "DRIVER" attribute when connecting to a server.
+    ##
+    ## The `attrs` field is a list delimited by null-bytes describing the
+    ## attributes of the driver. Each element is a key-value pair delimited by
+    ## a `=`. The `attrs` field may look like this:
+    ## `FileUsage=1\0FileExtns=*.dbf\0`. The `\0` is a null-byte character.
     var
         driver {.noinit.}: array[256, TSqlChar]
         attr {.noinit.}: array[2048, TSqlChar]

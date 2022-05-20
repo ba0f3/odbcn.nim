@@ -112,7 +112,7 @@ type
     OdbcState* = array[6, TSqlChar] # 6th char is _null-byte
     OdbcError* = object
         state*: OdbcState
-        native*: TSQLINTEGER
+        native*: TSqlInteger
         msg*: string
     OdbcErrors* = object
         retVal*: TSqlSmallInt
@@ -141,7 +141,7 @@ proc getDiagMsg*(handle: SqlHandle, handleKind: TSqlSmallInt): seq[OdbcError] {.
     var
         msg: array[SQL_MAX_MESSAGE_LENGTH, TSqlChar] # Is ANSI, beware
         state: OdbcState
-        native: TSQLINTEGER
+        native: TSqlInteger
         textLen: TSqlSmallInt # Is the length of output `msg` without _null-byte
     for i in 1.toInf:
         let ret = SQLGetDiagRec(handleKind, handle, TSqlSmallInt(i), state[0].addr, native,
@@ -517,7 +517,7 @@ template genAttrFuncs(baseObj, objs: untyped, sqlSetFunc, sqlGetFunc: typed) =
         ## `SQLGet*Attr` functions for available `attr`s and their expected
         ## return type.
         result = newString(256)
-        var retLen: TSQLINTEGER
+        var retLen: TSqlInteger
         getAttrLow(
             baseObj(h), TSqlInteger(attr), cast[SqlPointer](result[0].addr),
             TSqlInteger(result.len), retLen.addr)
@@ -1211,14 +1211,14 @@ proc bindCols*[T](stmt: OdbcAnyStmt, ret: var T) =
 
 # Side-effect as this may be an UPDATE/INSERT, which modifies database state.
 proc execDirectInternal(stmt: OdbcStmt, qry: openArray[Utf16Char]) {.tags: [IOEffect], sideEffect.} =
-    odbcCheck stmt, SQLExecDirectW(SqlHandle(stmt), qry[0].unsafeAddr, TSQLINTEGER(qry.len))
+    odbcCheck stmt, SQLExecDirectW(SqlHandle(stmt), qry[0].unsafeAddr, TSqlInteger(qry.len))
 
 # Same as above
 proc execInternal(stmt: OdbcStmt) {.tags: [IOEffect], sideEffect.} =
     odbcCheck(stmt, SQLExecute(SqlHandle(stmt)))
 
 proc prepareInternal(stmt: OdbcStmt, qry: openArray[Utf16Char]) {.tags: [ReadIOEffect].} =
-    odbcCheck(stmt, SqlHandle(stmt).SQLPrepareW(qry[0].unsafeAddr, qry.len.TSQLINTEGER))
+    odbcCheck(stmt, SqlHandle(stmt).SQLPrepareW(qry[0].unsafeAddr, qry.len.TSqlInteger))
 
 # {{{1 Simple query
 
@@ -1448,7 +1448,7 @@ func describeToList(desc: openArray[string]): seq[string] =
     for i in 0..<desc.len div 2:
         result.add desc[i*2]
 
-proc gorgeRaise(cmd: string): string {.compiletime.} =
+proc gorgeRaise(cmd: string): string {.compileTime.} =
     let (outp, rc) = gorgeEx(cmd, cache = "odbcn")
     if rc != 0:
         macros.error "Couldn't execute command '" & cmd & "' output: " & outp

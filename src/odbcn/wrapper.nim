@@ -708,7 +708,7 @@ proc SQLPutData*(StatementHandle: SqlHStmt, Data: SqlPointer,
                  StrLen_or_Ind: TSqlLen): TSqlSmallInt{.dynlib: odbclib, importc.}
 proc SQLBindCol*(StatementHandle: SqlHStmt, ColumnNumber: TSqlUSmallInt,
                  TargetType: TSqlSmallInt, TargetValue: SqlPointer,
-                 BufferLength: TSqlLEN, StrLen_or_Ind: ptr TSqlInteger): TSqlSmallInt{.
+                 BufferLength: TSqlLen, StrLen_or_Ind: ptr TSqlInteger): TSqlSmallInt{.
     dynlib: odbclib, importc.}
 proc SQLSetPos*(hstmt: SqlHStmt, irow: TSqlUSmallInt, fOption: TSqlUSmallInt,
                 fLock: TSqlUSmallInt): TSqlSmallInt{.dynlib: odbclib, importc.}
@@ -732,7 +732,7 @@ proc SQLRowCount*(StatementHandle: SqlHStmt, RowCount: var TSqlLen): TSqlSmallIn
     dynlib: odbclib, importc.}
 proc SQLBindParameter*(hstmt: SqlHStmt, ipar: TSqlUSmallInt,
                        fParamType: TSqlSmallInt, fCType: TSqlSmallInt,
-                       fSqlType: TSqlSmallInt, cbColDef: TSQLULEN,
+                       fSqlType: TSqlSmallInt, cbColDef: TSqlULen,
                        ibScale: TSqlSmallInt, rgbValue: SqlPointer,
                        cbValueMax: TSqlLen, pcbValue: ptr TSqlLen): TSqlSmallInt{.
     dynlib: odbclib, importc.}

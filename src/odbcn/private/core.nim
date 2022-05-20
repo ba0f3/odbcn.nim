@@ -1598,6 +1598,14 @@ const filterAsC = [
 iterator listDataSources*(env: OdbcEnv = globalOdbcEnv,
                           filter: DataSourcesFilter = dsfAll
                           ): tuple[server, driver: string] {.tags: [ReadIOEffect].} =
+    ## Iterate over all "data sources", or DSNs, on the system. On Windows,
+    ## these are defined in the registry. On Linux with unixodbc, these are
+    ## defined in "/etc/odbc.ini" or "~/.odbc.ini".
+    ##
+    ## The `server` field is the DSN name. This is used as value to the DSN
+    ## attribute when connecting to a server.
+    ##
+    ## The `driver` field is the ODBC driver used when connecting to the DSN.
     var
         server {.noinit.}: array[256, TSqlChar]
         driver {.noinit.}: array[256, TSqlChar]

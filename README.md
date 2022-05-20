@@ -9,6 +9,12 @@ for row in conn.exec "select * from MyTable":
   assert $row["MyStrCol"] == "Hello"
 ```
 
+## Build status
+
+#### Linux (x86_64)
+
+[![builds.sr.ht status](https://builds.sr.ht/~mjaa/odbcn-nim/commits/master/.build.yml.svg)](https://builds.sr.ht/~mjaa/odbcn-nim/commits/master/.build.yml?)
+
 ## Links
 
 * [Project page](https://sr.ht/~mjaa/odbcn-nim/)

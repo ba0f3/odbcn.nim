@@ -1597,19 +1597,19 @@ const filterAsC = [
 
 iterator listDataSources*(env: OdbcEnv = globalOdbcEnv,
                           filter: DataSourcesFilter = dsfAll
-                          ): tuple[server, desc: string] {.tags: [ReadIOEffect].} =
+                          ): tuple[server, driver: string] {.tags: [ReadIOEffect].} =
     var
         server {.noinit.}: array[256, TSqlChar]
-        desc {.noinit.}: array[2048, TSqlChar]
-        serverLen, descLen: TSqlSmallInt
+        driver {.noinit.}: array[256, TSqlChar]
+        serverLen, driverLen: TSqlSmallInt
     template doSql(direction): TSqlSmallInt =
         odbcCheckRet env, SqlHandle(env).SQLDataSources(
             direction, server[0].addr, server.len.TSqlSmallInt, serverLen,
-            desc[0].addr, desc.len.TSqlSmallInt, descLen)
+            driver[0].addr, driver.len.TSqlSmallInt, driverLen)
     var rc = doSql(filterAsC[filter])
     while rc != SQL_NO_DATA:
         yield (server.toOpenArray(0, serverLen - 1).toString,
-               desc.toOpenArray(0, descLen - 1).toString)
+               driver.toOpenArray(0, driverLen - 1).toString)
         rc = doSql(SQL_FETCH_NEXT)
 
 {.pop.}

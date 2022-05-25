@@ -24,3 +24,12 @@ proc newConnString*(connString: string): ConnString =
         if attr.len != 2:
             continue
         result[keyVal[0]] = keyVal[1]
+
+when isMainModule:
+    import unittest
+    test "Empty is not an error":
+        discard newConnString ""
+    test "Single semicolon is not an error":
+        discard newConnString ";"
+    test "Empty attributes is not an error":
+        discard newConnString ";Server=localhost;;Database=test;"

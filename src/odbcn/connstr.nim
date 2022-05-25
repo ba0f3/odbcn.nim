@@ -21,4 +21,6 @@ proc newConnString*(connString: string): ConnString =
     result = newConnString()
     for attr in connString.split(';'):
         let keyVal = attr.split('=', 1)
+        if attr.len != 2:
+            continue
         result[keyVal[0]] = keyVal[1]

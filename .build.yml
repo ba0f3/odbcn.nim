@@ -21,7 +21,7 @@ tasks:
       nim gen_docs.nims
       tar -czf docs.tar.gz -C htmldocs .
   - upload: |
-      if [ $BUILD_SUBMITTER != "git.sr.ht" ]; then
+      if [ "$BUILD_SUBMITTER" != "git.sr.ht" ]; then
         echo "Skipping doc uploading for non-git.sr.ht build"
         exit
       fi

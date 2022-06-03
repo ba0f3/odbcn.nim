@@ -1378,20 +1378,28 @@ iterator items*[T](ds: OdbcAnyResult, _: typedesc[T]): T =
     while ds.next(row):
         yield row
 
-template execFirst*(conn: OdbcConn, qry: string, params: varargs[untyped]): OdbcRowSet =
+template execFirst*(conn: OdbcConn, qry: string, params: varargs[untyped]): Option[OdbcRowSet] =
     ## Specialized `exec` that only gets the first row of a query. This is
-    ## useful for queries with "top 1" or "output" clauses.
+    ## useful for queries with "top 1" or "output" clauses. If no row is found
+    ## `none` is returned, otherwise `some(row)`.
+    bind options.some
+    bind options.get
+    bind options.none
     let ds = exec(conn, qry, params)
-    var ret: OdbcRowSet
-    doAssert ds.next(ret) == true
+    var ret = some(default OdbcRowSet)
+    if not ds.next(ret.get):
+        ret = none(OdbcRowSet)
     ds.discardResults
     ret
 
 template execScalar*(conn: OdbcConn, qry: string, params: varargs[untyped]): OdbcValue =
     ## Specialized `exec` that only fetches the first column of the first
-    ## row of a query.
+    ## row of a query. If there is no row in the result set, or no columns in
+    ## the result set, an empty value is returned.
+    bind options.get
+    bind options.map
     let row = execFirst(conn, qry, params)
-    row[0]
+    row.map(proc(it: OdbcRowSet): OdbcValue = it.getOrDefault(0)).get(default OdbcValue)
 
 # {{{2 Prepared execution
 
@@ -1553,10 +1561,14 @@ macro prep*(stmt: sink OdbcStmt, qry: static string,
                 true
 
             template execFirst(stmt: OdbcGenTyPreparedStmt,
-                               params: varargs[untyped]): OdbcGenRow {.used.} =
+                               params: varargs[untyped]): Option[OdbcGenRow] {.used.} =
+                bind options.get
+                bind options.some
+                bind options.none
                 baseExecute(stmt, params)
-                var ret: OdbcGenRow
-                doAssert next(OdbcGenTyPreparedResultSet(stmt), ret)
+                var ret = some(default OdbcGenRow)
+                if not next(OdbcGenTyPreparedResultSet(stmt), get(ret)):
+                    ret = none(OdbcGenRow)
                 closeCursor(OdbcStmt(stmt))
                 unbindParams(OdbcStmt(stmt))
                 ret

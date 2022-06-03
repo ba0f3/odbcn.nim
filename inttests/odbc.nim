@@ -8,6 +8,7 @@
 import std/[
     unittest,
     os,
+    options,
     macros,
     sequtils,
     encodings,
@@ -429,7 +430,7 @@ suite "Statements that check if SQL Server data types work":
                 check row.someDate == "2020-03-04"
             block:
                 let stmt = conn.prepNew("select datefromparts(2020, 3, 4) as someDate")
-                check stmt.execFirst == OdbcDate(year: 2020, month: 3, day: 4)
+                check stmt.execFirst.get == OdbcDate(year: 2020, month: 3, day: 4)
         doTest()
 
 static:
@@ -483,7 +484,7 @@ suite "Testing real database schemas":
                                        'a'.repeat(1500))
             check conn.execScalar"select len(VeryLong) from abc".toInt == 4500
             let stmt = conn.prepNew"select VeryLong from abc"
-            check stmt.execFirst.len == 4500
+            check stmt.execFirst.get.len == 4500
         testInner()
 
     test "Bind column locally":
@@ -514,10 +515,10 @@ suite "Testing real database schemas":
                 stmt.execOnly(unicode)
             block:
                 let stmt = conn.prepNew("select len(SomeName) as leng from TwoValue")
-                check stmt.execFirst == 4
+                check stmt.execFirst.get == 4
             block:
                 let stmt = conn.prepNew("select SomeName from TwoValue")
-                check stmt.execFirst == unicode
+                check stmt.execFirst.get == unicode
         doTest()
 
     # Both result sets go out of scope at the same time, i.e. at the end of the
@@ -553,7 +554,7 @@ suite "Testing real database schemas":
         proc testInner =
             discard conn.exec("insert TwoValue values (?, ?)", "heyo", 3)
             let stmt = conn.prepNew("select * from TwoValue where SomeValue = ?")
-            let row = stmt.execFirst(3)
+            let row = stmt.execFirst(3).get
             check row.someValue == 3
             check row.someName == "heyo"
         testInner()
@@ -624,7 +625,7 @@ suite "Testing real database schemas":
                 stmt.execOnly(someName = "Hello", someValue = 3)
             block:
                 let stmt = conn.prepNew"select * from TwoValue"
-                let row = stmt.execFirst
+                let row = stmt.execFirst.get
                 check row.someValue == 3
                 check row.someName == "Hello"
         doTest()
@@ -633,7 +634,7 @@ suite "Testing real database schemas":
         proc doTest =
             discard conn.exec("insert TwoValue values (?someName, ?someValue)",
                               someName = "Hello", someValue = 3)
-            let row = conn.execFirst"select * from TwoValue"
+            let row = conn.execFirst("select * from TwoValue").get
             check $row["SomeName"] == "Hello"
             check row["SomeValue"].i64 == 3
         doTest()
@@ -645,7 +646,7 @@ suite "Testing real database schemas":
                 stmt.execOnly(someInt = 5)
             block:
                 let stmt = conn.prepNew"select * from SameTypes"
-                let row = stmt.execFirst
+                let row = stmt.execFirst.get
                 check row.someInt1 == 5
                 check row.someInt2 == 5
         doTest()
@@ -654,7 +655,7 @@ suite "Testing real database schemas":
         proc doTest =
             discard conn.exec("insert SameTypes values (?someInt, ?someInt)",
                          someInt = 5)
-            let row = conn.execFirst"select * from SameTypes"
+            let row = conn.execFirst("select * from SameTypes").get
             check row["SomeInt1"].i64 == 5
             check row["SomeInt2"].i64 == 5
         doTest()
@@ -712,7 +713,7 @@ suite "Testing real database schemas":
                 stmt.execOnly(guid)
             block:
                 let stmt = conn.prepNew("select * from HasGuid")
-                let retGuid = stmt.execFirst
+                let retGuid = stmt.execFirst.get
                 check retGuid == guid
         doTest()
 
@@ -814,6 +815,26 @@ suite "Testing real database schemas":
 suite "Default values":
     setup:
         var conn = setupTestConn()
+
+    test "dynamic execFirst default value":
+        proc doTest =
+            let row = conn.execFirst "select * from TwoValue"
+            check row.isNone
+        doTest()
+
+    test "static execFirst default value":
+        proc doTest =
+            let ds = conn.prepNew "select * from TwoValue"
+            let row = ds.execFirst
+            check row.isNone
+        doTest()
+
+    test "execScalar default value":
+        proc doTest =
+            let row = conn.execScalar "select * from TwoValue"
+            check row.kind == otByteArray
+            check row.bytes.len == 0
+        doTest()
 
     test "getOrDefault":
         proc doTest =

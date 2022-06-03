@@ -15,6 +15,7 @@ tasks:
       export PATH=$HOME/.nimble/bin:$PATH
       cd odbcn-nim
       nimble build
+      nimble test
   - gen_docs: |
       export PATH=$HOME/.nimble/bin:$PATH
       cd odbcn-nim

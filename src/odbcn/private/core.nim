@@ -468,14 +468,26 @@ proc wchars*(x: OdbcValue): lent seq[Utf16Char] = x.wchars
 
 proc `[]`*(x: OdbcRowSet, idx: int): lent OdbcValue = x.vals[idx]
     ## Index for a value in a row set.
+
+proc getOrDefault*(x: OdbcRowSet, idx: int): OdbcValue =
+    if idx >= 0 and idx < x.vals.len:
+        result = x[idx]
+
 proc index*(x: OdbcRowSet, key: string): int =
     ## Find the column index of a column name `key`.
     for i, it in x.names:
         if cmpIgnoreStyle(it, key) == 0:
             return i
     -1
+
 proc `[]`*(x: OdbcRowSet, key: string): lent OdbcValue = x.vals[x.index key]
     ## Index for a value in a row set by searching for the column's name.
+
+proc getOrDefault*(x: OdbcRowSet, key: string): OdbcValue =
+    let idx = x.index key
+    if idx != -1:
+        result = x[idx]
+
 proc names*(x: OdbcRowSet): lent seq[string] = x.names
     ## Get a view into the list of column names.
 proc len*(x: OdbcRowSet): int = x.vals.len

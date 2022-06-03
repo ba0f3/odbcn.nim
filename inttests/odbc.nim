@@ -811,6 +811,19 @@ suite "Testing real database schemas":
                 check not ds.next
         testInner()
 
+suite "Default values":
+    setup:
+        var conn = setupTestConn()
+
+    test "getOrDefault":
+        proc doTest =
+            var row: OdbcRowSet
+            check row.getOrDefault(0).kind == otByteArray
+            check row.getOrDefault("Another non-existing column").kind == otByteArray
+            check row.getOrDefault(0).bytes.len == 0
+            check row.getOrDefault("Column").bytes.len == 0
+        doTest()
+
 suite "Iterators":
     setup:
         var conn = setupTestConn()

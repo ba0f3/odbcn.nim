@@ -7,6 +7,7 @@ import std/[tables, strutils]
 type ConnString* = distinct OrderedTable[string, string]
 
 proc `$`*(x: ConnString): string =
+    ## Convert this object into the actual ODBC connection `string`.
     for key, val in OrderedTable[string, string](x).pairs:
         result &= ";" & key & "=" & val
 

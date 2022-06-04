@@ -75,6 +75,12 @@ For 1.0 release:
 * [ ] Reorganize and tidy integration tests in more specific `suite`s
 * [ ] Find as many bugs in the implementation as possible, and fix and make
   integration tests for them
+* [ ] Document remaining functions in core.nim
+* [ ] In `odbcn/connstr`, add support of `{...}` for attribute values, which is
+  used to quote the value if it contains unsupported characters in ODBC
+* [ ] Use `openArray[char]` instead of `string` for `utf8To16` parameter
+* [ ] Document or fix why the array fields in `OdbcValue` are hidden
+* [ ] Make `listDrivers` and `listDataSources` use UTF-16 version?
 
 If all goes well, I would like to bump to 1.0 at the start of 2023.
 
@@ -83,3 +89,5 @@ Other tasks:
 * [ ] Add std/times helper
 * [ ] Add `bindCols` specialization for `OdbcGenTyPreparedStmt` with known
   column order
+* [] Maybe provide a way to call dynamic version of `prep` to
+  avoid code generation

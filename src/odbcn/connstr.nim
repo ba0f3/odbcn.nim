@@ -28,7 +28,18 @@ proc getOrDefault*(t: ConnString, key: string, default = ""): string =
 proc del*(t: var ConnString, key: string) =
     OrderedTable[string, string](t).del(key.toUpperAscii)
 
+proc hasKeyOrPut*(t: var ConnString, key, val: string): bool =
+    OrderedTable[string, string](t).hasKeyOrPut(key.toUpperAscii, val)
+
+proc mgetOrPut*(t: var ConnString, key, val: string): var string =
+    OrderedTable[string, string](t).mgetOrPut(key.toUpperAscii, val)
+
+proc pop*(t: var ConnString, key: string, val: var string): bool =
+    OrderedTable[string, string](t).pop(key.toUpperAscii, val)
+
 proc clear*(s: var ConnString) {.borrow.}
+proc `==`*(s, t: ConnString): bool {.borrow.}
+proc len*(s: ConnString): int {.borrow.}
 
 proc initConnString*(keyValues: varargs[tuple[key, val: string]]): ConnString =
     result = initOrderedTable[string, string](keyValues.varargsLen).ConnString

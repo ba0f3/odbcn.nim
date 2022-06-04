@@ -15,6 +15,12 @@ for row in conn.exec "select * from MyTable":
 
 [![builds.sr.ht status](https://builds.sr.ht/~mjaa/odbcn-nim/commits/master/.build.yml.svg)](https://builds.sr.ht/~mjaa/odbcn-nim/commits/master/.build.yml?)
 
+#### Windows
+
+No CI for Windows. If Linux CI works, Windows should work as well, because the
+Microsoft ODBC API is platform-independent. If Windows version of this library
+doesn't work, the C API wrapper is likely at fault.
+
 ## Links
 
 * [Project page](https://sr.ht/~mjaa/odbcn-nim/)
@@ -28,8 +34,8 @@ If you encounter issues, please submit a ticket
 
 All contributions are done by means of `git send-email`, which are submitted
 [here](https://lists.sr.ht/~mjaa/odbcn-nim). Read `CONTRIBUTING.md` for code
-guidelines. Testing is done by running the integration tests in
-`inttests/odbc.nim`.
+guidelines. Testing is done by running `inttests/odbc.nim`. These integration
+tests are not run by CI; they must be run locally before pushing to master.
 
 ## Alternatives to this library:
 

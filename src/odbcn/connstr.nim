@@ -57,11 +57,16 @@ proc initConnString*(connString: string): ConnString =
 when isMainModule:
     import unittest
     test "Empty is not an error":
-        discard initConnString ""
+        let connStr = initConnString ""
+        check $connStr == ""
+
     test "Single semicolon is not an error":
-        discard initConnString ";"
+        let connStr = initConnString ";"
+        check $connStr == ""
+
     test "Empty attributes is not an error":
-        discard initConnString ";Server=localhost;;Database=test;"
+        let connStr = initConnString ";Server=localhost;;Database=test;"
+        check $connStr == ";SERVER=localhost;DATABASE=test"
 
     test "Attributes are added for single string constructor":
         let connStr = initConnString ";Server=localhost;Database=test"

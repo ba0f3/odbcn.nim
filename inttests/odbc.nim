@@ -84,6 +84,13 @@ suite "Establishing connection":
         let connString = $initConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
         check not newOdbcNoConn().connect(connString).SqlHDBC.isNil
 
+static:
+    let initFile = currentSourcePath() /../ "init_databases.nim"
+    let cmd = &"nim r --cpu:{hostCPU} " & initFile & " -c \"" & connString & "\""
+    let (outp, rc) = gorgeEx cmd
+    if rc != 0:
+        macros.error "Command " & cmd & " failed with: " & outp
+
 # This only checks SQL Server data types, but this should not be generic
 # enough.
 suite "Statements that check if SQL Server data types work":
@@ -432,13 +439,6 @@ suite "Statements that check if SQL Server data types work":
                 let stmt = conn.prepNew("select datefromparts(2020, 3, 4) as someDate")
                 check stmt.execFirst.get == OdbcDate(year: 2020, month: 3, day: 4)
         doTest()
-
-static:
-    let initFile = currentSourcePath() /../ "init_databases.nim"
-    let cmd = &"nim r --cpu:{hostCPU} " & initFile & " -c \"" & connString & "\""
-    let (outp, rc) = gorgeEx cmd
-    if rc != 0:
-        macros.error "Command " & cmd & " failed with: " & outp
 
 proc setupTestConn: OdbcConn =
     var noConn = newOdbcNoConn()

@@ -44,9 +44,9 @@ static:
 import ./env {.all.} # Don't `include`, so that user can import std/os there
 when not declared(dbServer) or not declared(dbUser) or not declared(dbPass):
     macros.error errorMsg
-const connString = $newConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
+const connString = $initConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
 
-const testConnString = $newConnString {"DSN": dbServerx64, "UID": dbUser, "PWD": dbPass, "Database": "test"}
+const testConnString = $initConnString {"DSN": dbServerx64, "UID": dbUser, "PWD": dbPass, "Database": "test"}
 template prepNew(conn: OdbcConn, qry: static string): untyped =
     prep(conn, qry, testConnString)
 
@@ -81,7 +81,7 @@ suite "Establishing connection":
         expect OdbcException:
             discard newOdbcNoConn().connect(dbServer & "_Nope", dbUser, dbPass)
     test "Connection string":
-        let connString = $newConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
+        let connString = $initConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
         check not newOdbcNoConn().connect(connString).SqlHDBC.isNil
 
 # This only checks SQL Server data types, but this should not be generic

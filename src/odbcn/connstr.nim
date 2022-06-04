@@ -1,24 +1,42 @@
-import std/[strtabs, strutils]
+import std/[tables, strutils]
 
-type ConnString* = distinct StringTableRef
-
-proc newConnString*(keyValues: varargs[tuple[key, val: string]]): ConnString =
-    newStringTable(keyValues, mode = modeCaseInsensitive).ConnString
+# Important that it is "Ordered", because order matters for certain ODBC
+# attributes. E.g. "SAVEFILE" must be specified before "DRIVER", and only first
+# of "FILEDSN" and "DSN" is used for the connection. See `SQLDriverConnect`
+# docs for details.
+type ConnString* = distinct OrderedTable[string, string]
 
 proc `$`*(x: ConnString): string =
-    for (key, val) in x.StringTableRef.pairs:
+    for key, val in OrderedTable[string, string](x).pairs:
         result &= ";" & key & "=" & val
 
-proc `[]`*(t: ConnString, key: string): var string =
-    t.StringTableRef[key]
-proc `[]=`*(t: ConnString, key, val: string) {.borrow.}
-proc clear*(s: ConnString) {.borrow.}
-proc contains*(t: ConnString, key: string): bool {.borrow.}
-proc del*(t: ConnString, key: string) {.borrow.}
-proc getOrDefault*(t: ConnString, key: string, default = ""): string {.borrow.}
+proc `[]`*(t: var ConnString, key: string): var string =
+    OrderedTable[string, string](t)[key.toUpperAscii]
 
-proc newConnString*(connString: string): ConnString =
-    result = newConnString()
+proc `[]`*(t: ConnString, key: string): string =
+    OrderedTable[string, string](t)[key.toUpperAscii]
+
+proc `[]=`*(t: var ConnString, key, val: string) =
+    OrderedTable[string, string](t)[key.toUpperAscii] = val
+
+proc contains*(t: ConnString, key: string): bool =
+    OrderedTable[string, string](t).contains(key.toUpperAscii)
+
+proc getOrDefault*(t: ConnString, key: string, default = ""): string =
+    OrderedTable[string, string](t).getOrDefault(key.toUpperAscii)
+
+proc del*(t: var ConnString, key: string) =
+    OrderedTable[string, string](t).del(key.toUpperAscii)
+
+proc clear*(s: var ConnString) {.borrow.}
+
+proc initConnString*(keyValues: varargs[tuple[key, val: string]]): ConnString =
+    result = initOrderedTable[string, string](keyValues.varargsLen).ConnString
+    for (key, val) in keyValues:
+        result[key] = val
+
+proc initConnString*(connString: string): ConnString =
+    result = initConnString()
     for attr in connString.split(';'):
         let keyVal = attr.split('=', 1)
         if keyVal.len != 2:
@@ -28,8 +46,24 @@ proc newConnString*(connString: string): ConnString =
 when isMainModule:
     import unittest
     test "Empty is not an error":
-        discard newConnString ""
+        discard initConnString ""
     test "Single semicolon is not an error":
-        discard newConnString ";"
+        discard initConnString ";"
     test "Empty attributes is not an error":
-        discard newConnString ";Server=localhost;;Database=test;"
+        discard initConnString ";Server=localhost;;Database=test;"
+
+    test "Attributes are added for single string constructor":
+        let connStr = initConnString ";Server=localhost;Database=test"
+        check connStr["Server"] == "localhost"
+        check connStr["Database"] == "test"
+        check $connStr == ";SERVER=localhost;DATABASE=test"
+
+    test "Attributes are added for tuple seq constructor":
+        let connStr = initConnString {"Driver": "FreeTDS", "DSN": "MyDsn"}
+        check connStr["Driver"] == "FreeTDS"
+        check connStr["DSN"] == "MyDsn"
+        check $connStr == ";DRIVER=FreeTDS;DSN=MyDsn"
+
+    test "Attributes are case insensitive":
+        let connStr = initConnString ";Server=localhost"
+        check "SERvER" in connStr

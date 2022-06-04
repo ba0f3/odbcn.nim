@@ -76,7 +76,7 @@ For 1.0 release:
 * [ ] Find as many bugs in the implementation as possible, and fix and make
   integration tests for them
 * [ ] Document remaining functions in core.nim
-* [ ] In `odbcn/connstr`, add support of `{...}` for attribute values, which is
+* [x] In `odbcn/connstr`, add support of `{...}` for attribute values, which is
   used to quote the value if it contains unsupported characters in ODBC
 * [ ] Use `openArray[char]` instead of `string` for `utf8To16` parameter
 * [ ] Document or fix why the array fields in `OdbcValue` are hidden

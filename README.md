@@ -49,13 +49,12 @@ case for the `fast*` procs and iterators.
 
 coffeepots/odbc is more complex than std/db_odbc, and solves the problems
 described above. What sets odbcn apart from that library is the design
-philosophy. odbcn utilizes Nim RAII with no `ref` types (except for
-`ConnString` helper), while all handle types in coffeepots/odbc are `ref`
-types. The type system in odbcn emulates a subset of [ODBC state
-transitions][1] by representing a handle with several types, and having a
-handle instance transition between those types. This helps eliminate runtime
-bugs such as executing a query on a handle in a result set state. There are
-many other differences.
+philosophy. odbcn utilizes Nim RAII with no `ref` types, while all handle types
+in coffeepots/odbc are `ref` types. The type system in odbcn emulates a subset
+of [ODBC state transitions][1] by representing a handle with several types, and
+having a handle instance transition between those types. This helps eliminate
+runtime bugs such as executing a query on a handle in a result set state. There
+are many other differences.
 
 [1]: https://docs.microsoft.com/en-us/sql/odbc/reference/appendixes/appendix-b-odbc-state-transition-tables?view=sql-server-ver15
 

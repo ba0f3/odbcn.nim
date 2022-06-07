@@ -8,10 +8,12 @@ a verb.
 
 # Testing
 
+`inttests/odbc.nim` contains integration tests that are not executed by CI.
+These must be executed locally.
+
 It's recommended to use `unixodbc` as Driver Manager, `freetds` as ODBC driver
-and SQL Server in a Docker container to run the integration tests in
-`inttests/odbc.nim`. The tests are designed for SQL Server so they may not work
-with other DBMS's.
+and SQL Server in a Docker container to run the integration tests. The tests
+are designed for SQL Server so they may not work with other DBMS's.
 
 # Maintenance
 

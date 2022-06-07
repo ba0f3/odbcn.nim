@@ -30,12 +30,30 @@ See [the docs](https://mjaa.srht.site/odbcn-nim/odbcn.html) for in-depth manual
 to the various features and API reference.
 
 If you encounter issues, please submit a ticket
-[here](https://todo.sr.ht/~mjaa/odbcn-nim).
+[here](https://todo.sr.ht/~mjaa/odbcn-nim), or send an email to
+[~mjaa/odbcn-nim@todo.sr.ht](mailto:~/mjaa/odbcn-nim@todo.sr.ht). Subscribe to
+the tracker with
+[~/mjaa/odbcn-nim/subscribe@todo.sr.ht](mailto:~/mjaa/odbcn-nim/subscribe@todo.sr.ht).
 
 All contributions are done by means of `git send-email`, which are submitted
-[here](https://lists.sr.ht/~mjaa/odbcn-nim). Read `CONTRIBUTING.md` for code
-guidelines. Testing is done by running `inttests/odbc.nim`. These integration
-tests are not run by CI; they must be run locally before pushing to master.
+[here](https://lists.sr.ht/~mjaa/odbcn-nim), or
+[~mjaa/odbcn-nim@lists.sr.ht](mailto:~mjaa/odbcn-nim@lists.sr.ht). Subscribe to
+the mailing list with
+[~mjaa/odbcn-nim+subscribe@lists.sr.ht](mailto:~mjaa/odbcn-nim+subscribe@lists.sr.ht).
+
+Read `CONTRIBUTING.md` for code guidelines. Testing is done by running
+`inttests/odbc.nim`. These integration tests are not run by CI; they must be
+run locally before pushing to master.
+
+## Conditional symbols
+
+Add these Nim compiler flags to change `odbcn` behavior.
+
+* `-d:odbcNoEnvInit` - disable initialization of global ODBC environment
+  * In this case, this variable must be manually initialized, or the `env`
+    argument must be given in every applicable `odbcn` proc
+* `-d:odbcEnvConnectionPooling` - enable connection pooling for global ODBC
+  environment
 
 ## Alternatives to this library:
 
@@ -59,14 +77,38 @@ philosophy. odbcn utilizes Nim RAII with no `ref` types, while all handle types
 in coffeepots/odbc are `ref` types. The type system in odbcn emulates a subset
 of [ODBC state transitions][1] by representing a handle with several types, and
 having a handle instance transition between those types. This helps eliminate
-runtime bugs such as executing a query on a handle in a result set state. There
-are many other differences.
+runtime bugs such as executing a query on a handle in a result set state.
+
+"coffeepots/odbc" doesn't have a public API, because it is pre-1.0.0, and there
+hasn't been changes for over a year. This project also doesn't have a public
+API, but aims to do so soon.
 
 [1]: https://docs.microsoft.com/en-us/sql/odbc/reference/appendixes/appendix-b-odbc-state-transition-tables?view=sql-server-ver15
+
+## Credit
+
+["nanodbc" C++ ODBC abstraction](https://github.com/nanodbc/nanodbc/) helped in
+the following issues:
+
+* Simple module design: all needed code goes in one module (`private/core`);
+  extensions go into separate modules
+* Knowing which SQL data types to support, because there are very many of these
+  SQL data types
+* Knowing which C data types to support
+  * E.g. don't support "SQL_NUMERIC_STRUCT" for fixed-precision data
+    types, because it is poorly designed in ODBC; just use use the
+    "string" C data type instead
 
 ## License
 
 MIT
+
+## Versioning
+
+This project follows [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html). At
+the moment (pre-1.0.0), features and bug fixes increment patch version, and
+backwards-incompatible API changes increment minor version. If all goes well, I
+would like to bump to 1.0 at the start of 2023.
 
 ## Todos
 
@@ -81,13 +123,20 @@ For 1.0 release:
 * [ ] Use `openArray[char]` instead of `string` for `utf8To16` parameter
 * [ ] Document or fix why the array fields in `OdbcValue` are hidden
 * [ ] Make `listDrivers` and `listDataSources` use UTF-16 version?
-
-If all goes well, I would like to bump to 1.0 at the start of 2023.
+  * Current implementation may get ANSI-encoded data, which is undesirable;
+    must research this
+* [ ] Rework `OdbcException` so that it contains `OdbcError` objects, and not
+  just a `string`
+* [ ] Restructure modules? (is `private/core` module appropriate?)
 
 Other tasks:
 
 * [ ] Add std/times helper
 * [ ] Add `bindCols` specialization for `OdbcGenTyPreparedStmt` with known
   column order
-* [] Maybe provide a way to call dynamic version of `prep` to
+* [ ] Maybe provide a way to call dynamic version of `prep` to
   avoid code generation
+* [ ] Add async-support (`SQLCompleteAsync`, etc.)
+  * I don't know the scale of implementing async; I know async in Nim is very
+    hard to extend at the moment, so this may be a futile effort
+  * Will probably require existing structures to change

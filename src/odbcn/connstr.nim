@@ -47,7 +47,7 @@ proc contains*(t: ConnString, key: string): bool =
     OrderedTable[string, string](t).contains(key.toUpperAscii)
 
 proc getOrDefault*(t: ConnString, key: string, default = ""): string =
-    OrderedTable[string, string](t).getOrDefault(key.toUpperAscii)
+    OrderedTable[string, string](t).getOrDefault(key.toUpperAscii, default)
 
 proc del*(t: var ConnString, key: string) =
     OrderedTable[string, string](t).del(key.toUpperAscii)

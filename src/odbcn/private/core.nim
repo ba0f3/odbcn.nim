@@ -1367,6 +1367,7 @@ proc next*[T](ds: OdbcAnyResult, ret: var T): bool =
     if not ds.next:
         return false
     getDatas(ds, ret)
+    true
 
 iterator items*(ds: OdbcAnyResult): OdbcRowSet =
     var row: OdbcRowSet

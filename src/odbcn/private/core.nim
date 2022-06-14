@@ -358,8 +358,7 @@ func elemToPrimTy(_: typedesc[byte]): OdbcPrimType = otByteArray
 func elemToPrimTy(_: typedesc[char]): OdbcPrimType = otCharArray
 func elemToPrimTy(_: typedesc[Utf16Char]): OdbcPrimType = otWideArray
 func elemToPrimTy[T](ty: typedesc[T]): OdbcPrimType =
-    static:
-        macros.error ty.name & " not implemented for `elemToPrimTy`"
+    {.error ty.name & " not implemented for `elemToPrimTy`".}
 
 func intSizeToOdbcTy(sz: int): OdbcPrimType =
     case sz
@@ -386,8 +385,7 @@ func toPrimTy[T](_: typedesc[seq[T]]): OdbcPrimType = elemToPrimTy(T)
 func toPrimTy[I, T](_: typedesc[array[I, T]]): OdbcPrimType = elemToPrimTy(T)
 
 func toPrimTy[T](ty: typedesc[T]): OdbcPrimType =
-    static:
-        macros.error ty.name & " not implemented for `toPrimTy`"
+    {.error: ty.name & " not implemented for `toPrimTy`".}
 
 func toCTy(x: OdbcPrimType): TSqlSmallInt = primTyAsCTy[x]
 func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsOdbcTy[x][0]
@@ -949,9 +947,8 @@ proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType) =
     if ind == SQL_NULL_DATA: ret.reset
 
 proc getData[T](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T) =
-    static:
-        macros.error "Type `" & $ret.type  & "` is not a supported type " &
-            "for getting data into."
+    {.error: "Type `" & $ret.type  & "` is not a supported type " &
+        "for getting data into.".}
 
 {.pop.}
 
@@ -1036,9 +1033,8 @@ proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, 0, 0, param, 0, nil))
 
 proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr T) =
-    static:
-        macros.error "Type `" & $param.type  & "` is not a supported type " &
-            "for binding parameters."
+    {.error: "Type `" & $param.type  & "` is not a supported type " &
+        "for binding parameters.".}
 
 template initParamVal(s: string): seq[Utf16Char] =
     utf8To16(s)
@@ -1076,9 +1072,8 @@ template bindParamsKeyVal(
     order: openArray[string],
     params: varargs[untyped],
 ) =
-    static:
-        macros.error "Cannot use named parameters for non-constant query. " &
-            "Use single parameters (just `?`) instead."
+    {.error: "Cannot use named parameters for non-constant query. " &
+        "Use single parameters (just `?`) instead.".}
 
 macro bindParamsKeyVal(
     stmt: OdbcStmt,
@@ -1174,9 +1169,8 @@ proc bindCol(stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType) =
     odbcCheck stmt, SqlHandle(stmt).SQLBindCol(colIdx, ret.type.toCTy, ret.addr, 0, nil)
 
 proc bindCol[T](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T) =
-    static:
-        macros.error "Type `" & $ret.type  & "` is not a supported type " &
-            "for binding columns."
+    {.error: "Type `" & $ret.type  & "` is not a supported type " &
+        "for binding columns.".}
 
 proc bindCols*[T](stmt: OdbcAnyStmt, ret: var T) =
     ## Bind all columns of the result set (or result set to be) `stmt` to

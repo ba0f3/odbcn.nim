@@ -15,18 +15,20 @@
 ##
 ## ## String encoding
 ##
-## This library mostly assumes that `string`s are UTF-8 encoded (not ANSI or
-## UTF-16) for the purpose of converting it to/from other encodings. The
-## motivation is to prevent encoding bugs and pitfalls.
+## This library handles strings exclusively as UTF-8 encoded (not ANSI or
+## UTF-16). All strings from the user are assumed to be valid UTF-8, so
+## undefined behavior may happen if this cannot be guaranteed. The motivation
+## for keeping it UTF-8-only is to prevent encoding bugs and pitfalls.
 ##
-## All input `string`s such as query string and parameters are converted to
-## UTF-16 before being sent to ODBC.
+## This library guarantees that all output strings are UTF-8 because it relies
+## exclusively on the UTF-16 ODBC API for data retrieval. All input strings,
+## such as parameters, are converted to UTF-16 before sending to ODBC. All
+## output strings, such as values from `nvarchar` columns (UTF-16-encoded), or
+## `varchar` columns (encoding depends on collation), are retrieved as UTF-16,
+## and then converted to UTF-8 before being available to the user.
 ##
-## Output `string`s from wide row value types such as `nvarchar` are retrieved
-## from the UTF-16 ODBC API and converted to UTF-8. No encoding is assumed for
-## non-wide columns such as `varchar`, so beware! The encoding in the DBMS can
-## be any Windows codepage, including UTF-8. `varchar` encoding does not
-## necessarily correlate with the database's collation.
+## This re-encoding or processing by the driver/DBMS can be avoided by not
+## using `string`s, and instead using `seq[byte]` or `seq[char]`.
 ##
 ## ## Establishing connection
 ##

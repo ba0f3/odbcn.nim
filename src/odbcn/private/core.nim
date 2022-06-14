@@ -310,8 +310,8 @@ type
 const
     # Numeric and decimal types cannot be floats because they are exact numbers.
     primTyAsOdbcTy = [
-        ## Describes the "C data type" that this library represents each "SQL
-        ## data type".
+        ## This is used to determine the "C data type" to use when retrieving
+        ## data from a given "SQL data type".
         otByteArray: @[
             SQL_BINARY.TSqlSmallInt, SQL_VARBINARY, SQL_LONGVARBINARY, SQL_SS_UDT,
         ],
@@ -334,6 +334,26 @@ const
         otTime: @[SQL_TYPE_TIME.TSqlSmallInt, SQL_TIME, SQL_SS_TIME2],
         otTimestamp: @[SQL_TYPE_TIMESTAMP.TSqlSmallInt, SQL_TIMESTAMP],
         otGuid: @[SQL_GUID.TSqlSmallInt],
+    ]
+    primTyAsBestOdbcTy = [
+        ## Describes the "SQL data type" most appropriate for a "C data type".
+        ## This mapping differs from `primTyAsOdbcTy` in that this is used to
+        ## determine the "SQL data type" a query parameter should have, instead
+        ## of determining the "C data type" to use when retrieving data.
+        otByteArray: SQL_BINARY.TSqlSmallInt,
+        otCharArray: SQL_CHAR,
+        otWideArray: SQL_WCHAR,
+        otBool: SQL_BIT,
+        otInt8: SQL_TINYINT,
+        otInt16: SQL_SMALLINT,
+        otInt32: SQL_INTEGER,
+        otInt64: SQL_BIGINT,
+        otFloat32: SQL_REAL,
+        otFloat64: SQL_FLOAT,
+        otDate: SQL_TYPE_DATE,
+        otTime: SQL_TYPE_TIME,
+        otTimestamp: SQL_TYPE_TIMESTAMP,
+        otGuid: SQL_GUID,
     ]
     primTyAsCTy = [
         otByteArray: SQL_C_BINARY.TSqlSmallInt,
@@ -388,7 +408,7 @@ func toPrimTy[T](ty: typedesc[T]): OdbcPrimType =
     {.error: ty.name & " not implemented for `toPrimTy`".}
 
 func toCTy(x: OdbcPrimType): TSqlSmallInt = primTyAsCTy[x]
-func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsOdbcTy[x][0]
+func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsBestOdbcTy[x]
 func toCTy(x: typedesc): TSqlSmallInt = x.toPrimTy.toCTy
 
 func odbcToPrimTy(ty: TSqlSmallInt): OdbcPrimType =

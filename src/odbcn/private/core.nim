@@ -47,11 +47,11 @@ type
         ## `nil` values. Usually `nil` values are used when setting
         ## process-level attributes that affect all environments.
 
-    OdbcNoConn* {.dbcKind.} = distinct SqlHDBC
+    OdbcNoConn* {.dbcKind, requiresInit.} = distinct SqlHDBC
     OdbcConn* {.dbcKind.} = distinct OdbcNoConn
     #OdbcAsyncConn* = distinct OdbcNoConn
 
-    OdbcStmt* {.stmtKind.} = distinct SqlHStmt
+    OdbcStmt* {.stmtKind, requiresInit.} = distinct SqlHStmt
     OdbcPreparedStmt* {.stmtKind, preparedKind.} = distinct OdbcStmt
     #OdbcAsyncStmt* = distinct SqlHStmt
 
@@ -316,12 +316,17 @@ const
             SQL_BINARY.TSqlSmallInt, SQL_VARBINARY, SQL_LONGVARBINARY, SQL_SS_UDT,
         ],
         otCharArray: @[
-            SQL_CHAR.TSqlSmallInt, SQL_VARCHAR, SQL_LONGVARCHAR, SQL_NUMERIC,
-            SQL_DECIMAL,
+            SQL_NUMERIC.TSqlSmallInt, SQL_DECIMAL,
         ],
         otWideArray: @[
             SQL_WCHAR.TSqlSmallInt, SQL_WVARCHAR, SQL_WLONGVARCHAR, SQL_SS_XML,
             SQL_SS_TIMESTAMPOFFSET,
+
+            # These are `varchar`-like columns. Their encoding depends on
+            # collation, which depends on both database and column. This is
+            # hard to keep track of, so let driver do the job: convert to
+            # UTF-16, so these column types can reliably be converted to UTF-8.
+            SQL_CHAR, SQL_VARCHAR, SQL_LONGVARCHAR,
         ],
         otBool: @[SQL_BIT.TSqlSmallInt],
         otInt8: @[SQL_TINYINT.TSqlSmallInt],

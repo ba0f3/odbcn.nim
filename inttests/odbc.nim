@@ -144,8 +144,8 @@ suite "Statements that check if SQL Server data types work":
     test "string":
         proc doTest =
             let val = conn.execScalar"select 'Hey'"
-            check val.kind == otCharArray
-            check val.chars == @['H', 'e', 'y']
+            check val.kind == otWideArray
+            check val.wchars.len == 3
             check $val == "Hey"
         doTest()
     test "widestring":
@@ -177,7 +177,7 @@ suite "Statements that check if SQL Server data types work":
     test "null string produces empty string":
         proc doTest =
             let val = conn.execScalar "select cast(null as varchar(5))"
-            check val.kind == otCharArray
+            check val.kind == otWideArray
             check $val == ""
         doTest()
 
@@ -305,35 +305,6 @@ suite "Statements that check if SQL Server data types work":
             check $conn.execScalar"select SomeCol from #abc" == unicode
         doTest()
 
-    # Conversions:
-    # * UTF-8 -> UTF-16LE before sending parameter
-    # * UTF-16LE -> ANSI in ODBC driver/SQL Server
-    test "UTF-8 string that has an ANSI equivalent is converted and inserted as ANSI to varchar column":
-        proc doTest =
-            discard conn.exec"create table #abc (SomeCol varchar(max))"
-            let utf8Str = "ø"
-            check utf8Str.len == 2
-            let ansiStr = utf8Str.convert("CP1252", "UTF-8")
-            check ansiStr.len == 1
-            discard conn.exec("insert #abc values (?)", utf8Str)
-            check conn.execScalar"select datalength(SomeCol) from #abc".toInt == 1
-            check conn.execScalar"select len(SomeCol) from #abc".toInt == 1
-            check $conn.execScalar"select SomeCol from #abc" == ansiStr
-        doTest()
-
-    # Must use `seq[char]` here, because `string` is otherwise converted to
-    # `seq[uint16]` by this library.
-    test "UTF-8 string is stored in varchar column without conversion":
-        proc doTest =
-            discard conn.exec"create table #abc (SomeCol varchar(max))"
-            let utf8Str = "ø".toSeq
-            check utf8Str.len == 2
-            discard conn.exec("insert #abc values (?)", utf8Str)
-            check conn.execScalar"select datalength(SomeCol) from #abc".toInt == 2
-            check conn.execScalar"select len(SomeCol) from #abc".toInt == 2
-            check $conn.execScalar"select SomeCol from #abc" == utf8Str
-        doTest()
-
     test "Variable sized data":
         proc testInner =
             discard conn.exec"create table #abc (VeryLong varchar(max))"
@@ -348,7 +319,7 @@ suite "Statements that check if SQL Server data types work":
                                        'a'.repeat(1500))
             check conn.execScalar"select len(VeryLong) from #abc".toInt == 4500
             let val = conn.execScalar"select VeryLong from #abc"
-            check val.chars.len == 4500
+            check val.wchars.len == 4500
         testInner()
 
     test "Prepared execution":
@@ -439,6 +410,90 @@ suite "Statements that check if SQL Server data types work":
                 let stmt = conn.prepNew("select datefromparts(2020, 3, 4) as someDate")
                 check stmt.execFirst.get == OdbcDate(year: 2020, month: 3, day: 4)
         doTest()
+
+suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+        let utf8Str = "ø"
+        require utf8Str.len == 2
+        let ansiStr = utf8Str.convert("CP1252", "UTF-8")
+        require ansiStr.len == 1
+        let collate = "latin1_general_100_ci_as_sc"
+        proc doSetup =
+            discard conn.exec "create table #abc (SomeCol varchar(max) collate " & collate & ")"
+            discard conn.exec("insert #abc values (?)", utf8Str)
+        doSetup()
+    test "Number of bytes is 1 in ANSI":
+        proc doTest =
+            check conn.execScalar"select datalength(SomeCol) from #abc".toInt == 1
+        doTest()
+    test "Number of characters is 1 in ANSI":
+        proc doTest =
+            check conn.execScalar"select len(SomeCol) from #abc".toInt == 1
+        doTest()
+    test "Binary representation is in ANSI":
+        proc doTest =
+            block:
+                type BinaryStr = object
+                    someCol: seq[char]
+                let rs = conn.exec("select SomeCol from #abc")
+                check rs.items(BinaryStr).toSeq == @[BinaryStr(someCol: ansiStr.toSeq)]
+        doTest()
+    test "String representation is in UTF-8":
+        proc doTest =
+            check $conn.execScalar"select SomeCol from #abc" == utf8Str
+        doTest()
+
+# NOTE: A UTF-8 collation does NOT change how string data is sent. It must
+# still be converted to UTF-16, sent over ODBC API, and then converted back
+# to UTF-8 to be stored in the database. We cannot send UTF-8 data directly
+# through "varchar" API. The below commented test demonstrates this; we are
+# able to get UTF-8 encoded data into the database, but it is not interpreted
+# as UTF-8.
+# NOTE: Must use `seq[char]` here, because `string` is otherwise converted to
+# `seq[uint16]` by this library.
+#suite "UTF-8 string is stored as-is in database":
+#    setup:
+#        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+#        let utf8Str = cast[seq[byte]]("ø".toSeq)
+#        require utf8Str.len == 2
+#        proc doSetup =
+#            discard conn.exec "drop database if exists utf8test"
+#            discard conn.exec "create database utf8test collate latin1_general_100_ci_as_sc_UTF8"
+#            conn.setCatalog "utf8Test"
+#            discard conn.exec "create table #abc (SomeCol varchar(max))"
+#            discard conn.exec("insert #abc values (?)", utf8Str)
+#        doSetup()
+#
+#    # Succeeds
+#    test "Number of bytes takes 2-byte UTF-8 into account":
+#        proc doTest =
+#            check conn.execScalar"select datalength(SomeCol) from #abc".toInt == 2
+#        doTest()
+#
+#    # Fails: Result is 2 (indicates it doesn't understand it's UTF-8)
+#    test "Number of characters is number of bytes":
+#        proc doTest =
+#            check conn.execScalar"select len(SomeCol) from #abc".toInt == 1
+#        doTest()
+#
+#    # Succeeds
+#    test "Binary representation is the same UTF-8 sequence sent in":
+#        proc doTest =
+#            block:
+#                type BinaryStr = object
+#                    someCol: seq[byte]
+#                let rs = conn.exec("select SomeCol from #abc")
+#                check rs.items(BinaryStr).toSeq == @[BinaryStr(someCol: utf8Str)]
+#        doTest()
+#
+#    # Fails: Returns (0xC383_C2B8), expected (0xC3B8); likely thinks varchar
+#    # data is in some other encoding
+#    test "String representation is correct UTF-8":
+#        proc doTest =
+#            echo ($conn.execScalar"select SomeCol from #abc").repr
+#            check $conn.execScalar"select SomeCol from #abc" == "ø"
+#        doTest()
 
 proc setupTestConn: OdbcConn =
     var noConn = newOdbcNoConn()

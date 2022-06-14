@@ -128,6 +128,22 @@ For 1.0 release:
 * [ ] Rework `OdbcException` so that it contains `OdbcError` objects, and not
   just a `string`
 * [ ] Restructure modules? (is `private/core` module appropriate?)
+* [ ] Add `toBytes(OdbcValue): seq[byte]`
+* [ ] Change `newOdbcConn(s: string): OdbcConn` to `newOdbcConn(s: string):
+  OdbcResult[OdbcConn]`?
+  * Motivation: This proc may be used to test if a connection is valid, so
+    raising an exception is unnecessary
+* [ ] Add `requiresInit` to all handle types (except `OdbcEnv`), because `nil`
+  values are not allowed
+* [ ] Add support for `getData` of result data into a non-object
+  * Motivation: Easier to do queries that only contain 1 column
+* [ ] Add warning if a field in typed `next` is unused? Maybe not
+* [ ] Document that for static `prep`-variant, fields for typed `next` must
+  correlate with the column name, else the column will not be read into a field
+* [x] Add UTF-8 encoding for `varchar` columns
+* [ ] Add UTF-16 conversion for `seq[char]` values?
+* [ ] Add tests for typed `next(OdbcAnyResult, T)` (and consequently typed
+  `items` iterator)
 
 Other tasks:
 

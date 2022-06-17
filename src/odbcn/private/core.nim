@@ -981,7 +981,11 @@ proc getData[T](ds: OdbcAnyResult, colIdx: TSqlUSmallInt, ret: var T) =
     mixin getData
     getData(OdbcStmt(ds), colIdx, ret)
 
-proc getDatas*[T: OdbcFixedLenType or (not object or tuple)](ds: OdbcAnyResult, ret: var T, _: static openArray[string] = []) =
+proc getDatas*[T: OdbcFixedLenType or not (object or tuple)](
+    ds: OdbcAnyResult,
+    ret: var T,
+    _: static openArray[string] = [],
+) =
     getData(ds, 1, ret)
 
 macro getDatas*[T: not OdbcFixedLenType and (object or tuple)](

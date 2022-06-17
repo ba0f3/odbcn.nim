@@ -1188,11 +1188,8 @@ proc bindColPointer(stmt: OdbcStmt, colIdx: TSqlUSmallInt, cTy: TSqlSmallInt,
                     ret: pointer, size: int) =
     odbcCheck stmt, SqlHandle(stmt).SQLBindCol(colIdx, cTy, ret, size, nil)
 
-proc bindCol[I](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var array[I, byte | char]) =
-    bindColPointer(stmt, colIdx, SQL_C_CHAR, ret[0].addr, sizeof(ret))
-
-proc bindCol[I](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var array[I, Utf16Char]) =
-    bindColPointer(stmt, colIdx, SQL_C_WCHAR, ret[0].addr, sizeof(ret))
+proc bindCol[I; T: OdbcArrayType](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var array[I, T]) =
+    bindColPointer(stmt, colIdx, toCTy(ret.type), ret[0].addr, sizeof(ret))
 
 proc bindCol(stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType) =
     odbcCheck stmt, SqlHandle(stmt).SQLBindCol(colIdx, ret.type.toCTy, ret.addr, 0, nil)
@@ -1480,7 +1477,7 @@ macro withExec*(stmt: var OdbcAnyPrepared, paramsAndCode: varargs[untyped]) =
         params = nnkArgList.newTree(paramsAndCode[0..<paramsAndCode.len-1])
         code = paramsAndCode[^1]
     quote do:
-        block:
+        block: # So `rs` is shadowed
             let rs {.inject.} = exec(`stmt`, `params`)
             `code`
             `stmt` = unbind(rs)
@@ -1599,11 +1596,6 @@ macro prep*(stmt: sink OdbcStmt, qry: static string,
 
             iterator items(ds: OdbcGenTyPreparedResultSet): OdbcGenRow {.used.} =
                 var row: OdbcGenRow
-                while ds.next(row):
-                    yield row
-
-            iterator items[T](ds: OdbcGenTyPreparedResultSet, _: typedesc[T]): T {.used.} =
-                var row: T
                 while ds.next(row):
                     yield row
 

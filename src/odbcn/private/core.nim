@@ -1167,7 +1167,11 @@ macro bindParams*[T: object or tuple](stmt: OdbcAnyStmt, params: T, order: stati
     ##
     ## This is ideal for repeated executions of a prepared "INSERT" query.
     result = newStmtList()
-    let keys = params.getTypeImpl.objectFields.toSeq
+    let keys =
+        if T is object:
+            params.getTypeImpl.objectFields.toSeq
+        else:
+            @[]
     # TODO: Drop this?
     let bindParam = bindSym("bindParam", brOpen)
     for i, nextParam in order:

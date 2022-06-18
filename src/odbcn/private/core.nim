@@ -1172,7 +1172,7 @@ macro bindParams*[T: object or tuple](stmt: OdbcAnyStmt, params: T, order: stati
     let bindParam = bindSym("bindParam", brOpen)
     for i, nextParam in order:
         let idx = TSqlUSmallInt(i + 1)
-        if allIt(keys, cmpIgnoreStyle(nextParam, it) != 0):
+        if keys.len != 0 and nextParam != "" and allIt(keys, cmpIgnoreStyle(nextParam, it) != 0):
             macros.error "Parameter named `" & nextParam &
                 "` in SQL query is missing from the fields in the parameter object."
         result.add quote do:

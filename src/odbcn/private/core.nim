@@ -1062,7 +1062,7 @@ proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, 0, 0, param, 0, nil))
 
 proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr T) =
-    {.error: "Type `" & $param.type  & "` is not a supported type " &
+    {.error: "Type `" & $T.type  & "` is not a supported type " &
         "for binding parameters.".}
 
 template initParamVal(s: string): seq[Utf16Char] =

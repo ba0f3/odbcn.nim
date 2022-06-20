@@ -1277,7 +1277,7 @@ proc findEndOfParam(x: string): int =
     for i, c in x:
         if c notin {'a'..'z', 'A'..'Z', '0'..'9'}:
             return i
-    -1
+    x.len
 
 # Strip away parameter name at the beginning of the string.
 func parsePart(part: string): (string, string) =

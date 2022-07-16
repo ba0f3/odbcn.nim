@@ -1025,20 +1025,19 @@ proc bindParamPtr(stmt: OdbcStmt, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
         0, param, TSqlLen(paramLen), nil))
 
-proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
-               param: ptr (WideCString | WideCStringObj | seq[OdbcArrayType])) =
+template bindParamArr(stmt, idx, param) =
     const
         primTy = toPrimTy(param[].type)
         cTy = toCTy(primTy)
         odbcTy = toBestOdbcTy(primTy)
     bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, param[].len)
 
+proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
+               param: ptr (WideCString | WideCStringObj | seq[OdbcArrayType])) =
+    bindParamArr(stmt, idx, param)
+
 proc bindParam[I](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr array[I, OdbcArrayType]) =
-    const
-        primTy = toPrimTy(param[].type)
-        cTy = toCTy(primTy)
-        odbcTy = toBestOdbcTy(primTy)
-    bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, param[].len)
+    bindParamArr(stmt, idx, param)
 
 proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr SomeFloat) =
     const

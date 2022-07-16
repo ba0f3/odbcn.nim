@@ -68,11 +68,16 @@ proc toArray[I: static int](s: string): array[I, char] =
 proc toCString[I](s: array[I, char]): cstring =
     cast[cstring](s[0].unsafeAddr)
 
-suite "Pre-connection utilities":
-    test "listDrivers":
-        check listDrivers().toSeq.len > 0
-    test "listDataSources":
-        check listDataSources().toSeq.len > 0
+test "DSN and driver iterator finds tested DSN":
+    let dsns = listDataSources().toSeq
+    var dsnDriver: tuple[server, driver: string] = ("", "")
+    for dsn in dsns:
+        if cmpIgnoreCase(dsn.server, dbServer) == 0:
+            dsnDriver = dsn
+            break
+    check dsnDriver.server != ""
+    let drivers = listDrivers().toSeq
+    check drivers.anyIt(cmpIgnoreCase(it.name, dsnDriver.driver) == 0)
 
 suite "Establishing connection":
     test "Base":
@@ -83,6 +88,292 @@ suite "Establishing connection":
     test "Connection string":
         let connString = $initConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
         check not newOdbcNoConn().connect(connString).SqlHDBC.isNil
+
+suite "Simple bindParams":
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+
+    test "One int params":
+        proc doTest =
+            check conn.execScalar("select ?", 3).toInt == 3
+        doTest()
+
+    test "Two int params":
+        proc doTest =
+            let row = conn.execFirst("select ?, ?", 3, 4).get
+            check row[0].toInt == 3
+            check row[1].toInt == 4
+        doTest()
+
+    test "One string param":
+        proc doTest =
+            check $conn.execScalar("select ?", "Hello, world!") == "Hello, world!"
+        doTest()
+
+    test "Two string params":
+        proc doTest =
+            let row = conn.execFirst("select ?, ?", "Hello", "world!").get
+            check $row[0] == "Hello"
+            check $row[1] == "world!"
+        doTest()
+
+    test "One int and one string param":
+        proc doTest =
+            let row = conn.execFirst("select ?, ?", 4, "world!").get
+            check row[0].toInt == 4
+            check $row[1] == "world!"
+        doTest()
+
+    test "One long addressable string param":
+        proc doTest =
+            const exp = 'b'.repeat(3500)
+            let got = conn.execScalar("select ?", exp)
+            check got.kind == otWideArray
+            check got.wchars.len == 3500
+            check $got == exp
+        doTest()
+
+    test "One long non-addressable string param":
+        proc doTest =
+            let got = conn.execScalar("select ?", 'b'.repeat(3500))
+            check got.kind == otWideArray
+            check got.wchars.len == 3500
+            check $got == 'b'.repeat(3500)
+        doTest()
+
+    test "Two long string params":
+        proc doTest =
+            let
+                exp1 = "ø".repeat(3000)
+                exp2 = 'a'.repeat(3500)
+            let got = conn.execFirst("select ?, ?", exp1, exp2).get
+            check $got[0] == exp1
+            check $got[1] == exp2
+        doTest()
+
+    test "Long Byte array parameter":
+        proc doTest =
+            let got = conn.execScalar("select ?", cast[seq[byte]]('b'.repeat(3500)))
+            check got.kind == otByteArray
+            check got.bytes.len == 3500
+            check cast[string](got.bytes) == 'b'.repeat(3500)
+        doTest()
+
+    # bindParamsOneSimple
+    test "Not enough parameters creates error, static query":
+        proc doTest = check not compiles(conn.exec("select ?, ?", 4))
+        doTest()
+
+    # bindParamsOneSimple
+    test "Not enough parameters creates error, dynamic query":
+        proc doTest =
+            let qry = "select ?, ?"
+            discard conn.exec(qry, 4)
+        expect(OdbcException):
+            doTest()
+
+    # bindParamsSimple
+    test "Not enough multiple parameters creates error, static query":
+        proc doTest = check not compiles(conn.exec("select ?, ?, ?", 4, 3))
+        doTest()
+
+    # bindParamsSimple
+    test "Not enough multiple parameters creates error, dynamic query":
+        proc doTest =
+            let qry = "select ?, ?, ?"
+            discard conn.exec(qry, 4, 3)
+        expect(OdbcException):
+            doTest()
+
+    # bindParamsKeyVal
+    test "Not enough named parameters creates error, static query":
+        proc doTest =
+            check not compiles(conn.exec("select ?x, ?y", x=4))
+            check not compiles(conn.exec("select ?x, ?y", y=4))
+        doTest()
+
+suite "Object/tuple typed bindParams":
+    type TestObj = object
+        anInt: int
+        veryLong: string
+    # NOTE: These must be `let` instead of `const`, so that the object fields
+    # are addressable. Reason is because of a Nim bug where Nim decides that
+    # fields in a `const` object are addressable, but inlines the field values
+    # in the generated C code, which GCC throws an error about.
+    let
+        exp1 = TestObj(anInt: 42, veryLong: "Hello")
+        exp2 = TestObj(anInt: 64, veryLong: "ø")
+
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+        proc doSetup =
+            discard conn.exec "create table #abc (AnInt int, AString nvarchar(64))"
+        doSetup()
+        proc checkInsert =
+            var stmt = conn.prep("select * from #abc")
+            stmt.withExec:
+                let got1 = rs.items(TestObj).toSeq
+                check got1 == @[exp1, exp2]
+            stmt.withExec:
+                let got2 = rs.items((int, string)).toSeq
+                check got2 == @[(exp1.anInt, exp1.veryLong), (exp2.anInt, exp2.veryLong)]
+
+    # If this test succeeds, then `string` to `seq[Utf16Char]` conversion
+    # works and doesn't result in `seq[Utf16Char]` going out of scope before
+    # the `SQLExecute`.
+    test "Object with simple parameters":
+        proc doTest =
+            let stmt = conn.prep "insert into #abc values (?, ?)"
+            stmt.execOnly exp1
+            stmt.execOnly exp2
+        doTest()
+        checkInsert()
+
+    test "Object with same-ordered named parameters":
+        proc doTest =
+            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            stmt.execOnly exp1
+            stmt.execOnly exp2
+        doTest()
+        checkInsert()
+
+    # Tests that fields in object is matched correctly
+    test "Object with reverse-ordered named parameters":
+        proc doTest =
+            let stmt = conn.prep "insert into #abc (AString, AnInt) values (?veryLong, ?anInt)"
+            stmt.execOnly exp1
+            stmt.execOnly exp2
+        doTest()
+        checkInsert()
+
+    test "Object field can be mapped to several parameters":
+        proc doTest =
+            type TestObj2 = object
+                anInt, twoInt: int
+            let thisExp = TestObj2(anInt: 4, twoInt: 9)
+            let got = conn.exec("select ?twoInt, ?twoInt", thisExp).
+                items((int, int)).toSeq
+            check got == @[(9, 9)]
+        doTest()
+
+    test "Tuple":
+        proc doTest =
+            let stmt = conn.prep "insert into #abc values (?, ?)"
+            let
+                tup1 = (exp1.anInt, exp1.veryLong)
+                tup2 = (exp2.anInt, exp2.veryLong)
+            stmt.execOnly tup1
+            stmt.execOnly tup2
+        doTest()
+        checkInsert()
+
+    test "Object with more fields than parameters is fine":
+        type TestObj2 = object
+            anInt, twoInt: int
+            aStr: string
+        let
+            tst1 = TestObj2(anInt: exp1.anInt, twoInt: 4, aStr: exp1.veryLong)
+            tst2 = TestObj2(anInt: exp2.anInt, twoInt: 3, aStr: exp2.veryLong)
+        proc doTest =
+            let stmt = conn.prep "insert into #abc values (?anInt, ?aStr)"
+            stmt.execOnly tst1
+            stmt.execOnly tst2
+        doTest()
+        checkInsert()
+
+    test "Individual values":
+        proc doTest =
+            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            stmt.execOnly(anInt = exp1.anInt, veryLong = exp1.veryLong)
+            stmt.execOnly(anInt = exp2.anInt, veryLong = exp2.veryLong)
+        doTest()
+        checkInsert()
+
+    test "Parameters not in object is an error":
+        proc doTest =
+            check not compiles(conn.exec("select ?nonExistingParam", exp1))
+        doTest()
+
+suite "Object/tuple typed getDatas":
+    type TestObj = object
+        anInt: int
+        veryLong: string
+    let
+        exp1 = TestObj(anInt: 42, veryLong: "Hello")
+        exp2 = TestObj(anInt: 64, veryLong: "ø")
+
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+        proc doSetup =
+            discard conn.exec "create table #abc (AnInt int, AString nvarchar(64))"
+            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            stmt.execOnly exp1
+            stmt.execOnly exp2
+        doSetup()
+
+    test "Manual `next` works":
+        proc testInner =
+            let rs = conn.exec "select * from #abc"
+            var row: TestObj
+            check rs.next row
+            check row == exp1
+            check rs.next row
+            check row == exp2
+            check not rs.next
+        testInner()
+
+    test "Iterator works":
+        proc doTest =
+            let rs = conn.exec "select * from #abc"
+            let got = rs.items(TestObj).toSeq
+            check got == @[exp1, exp2]
+        doTest()
+
+    test "Tuple works":
+        proc doTest =
+            let rs = conn.exec "select * from #abc"
+            let got = rs.items((int, string)).toSeq
+            check got == @[(exp1.anInt, exp1.veryLong), (exp2.anInt, exp2.veryLong)]
+        doTest()
+
+suite "Select into typed scalar type":
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+
+    test "string":
+        proc doTest =
+            discard conn.exec "create table #abc (AStr nvarchar(20))"
+            discard conn.exec "insert #abc values (N'Hey')"
+            let got = conn.exec("select * from #abc").items(string).toSeq
+            check got == @["Hey"]
+        doTest()
+
+    test "int":
+        proc doTest =
+            discard conn.exec "create table #abc (AStr int)"
+            discard conn.exec "insert #abc values (42)"
+            let got = conn.exec("select * from #abc").items(int).toSeq
+            check got == @[42]
+        doTest()
+
+    test "many strings":
+        proc doTest =
+            discard conn.exec "create table #abc (AStr nvarchar(32))"
+            discard conn.exec "insert #abc values (N'Hey')"
+            discard conn.exec "insert #abc values (N'ø')"
+            let got = conn.exec("select * from #abc").items(string).toSeq
+            check got == @["Hey", "ø"]
+        doTest()
+
+    test "Tuple":
+        proc doTest =
+            discard conn.exec "create table #abc (AStr nvarchar(32), AInt int)"
+            discard conn.exec "insert #abc values (N'Hey', 42)"
+            discard conn.exec "insert #abc values (N'ø', 64)"
+            let got = conn.exec("select * from #abc").items((string, int)).toSeq
+            check got == @[("Hey", 42), ("ø", 64)]
+            check got[0].type is (string, int)
+        doTest()
 
 static:
     let initFile = currentSourcePath() /../ "init_databases.nim"
@@ -298,7 +589,7 @@ suite "Statements that check if SQL Server data types work":
             discard conn.exec"create table #abc (SomeCol nvarchar(max))"
             # æ is 1 byte ANSI / 2 byte UTF-8/16
             # シ is 2 byte UTF-16 / 3 byte UTF-8
-            let unicode = "løæシ"
+            const unicode = "løæシ"
             check unicode.newWideCString.len == 4 # Sanity check
             discard conn.exec("insert #abc values (?)", unicode)
             check conn.execScalar"select len(SomeCol) from #abc".toInt == 4
@@ -312,7 +603,7 @@ suite "Statements that check if SQL Server data types work":
             # `newWideCString` is unnecessary, because `string`s are converted
             # to UTF-16 regardless, but this demonstrates that `WideCString`
             # can be used for optimization purposes.
-            discard conn.exec("insert #abc values (?)", 'b'.repeat(3000).newWideCString)
+            discard conn.exec("insert #abc values (?)", 'b'.repeat(3000))
             check conn.execScalar"select datalength(VeryLong) from #abc".toInt == 3000
             check conn.execScalar"select len(VeryLong) from #abc".toInt == 3000
             discard conn.exec("update #abc set VeryLong = VeryLong + ?",
@@ -532,7 +823,7 @@ suite "Testing real database schemas":
 
     test "Compile-time query for variable sized data":
         proc testInner =
-            discard conn.exec("insert abc values (?)", 'b'.repeat(3000).newWideCString)
+            discard conn.exec("insert abc values (?)", 'b'.repeat(3000))
             check conn.execScalar"select datalength(VeryLong) from abc".toInt == 3000
             check conn.execScalar"select len(VeryLong) from abc".toInt == 3000
             discard conn.exec("update abc set VeryLong = VeryLong + ?",
@@ -621,8 +912,7 @@ suite "Testing real database schemas":
             let inp = TestObj(veryLong: utf8To16"hey")
             block:
                 let stmt = conn.prepNew("insert abc values (?veryLong)")
-                stmt.bindParams inp
-                stmt.execOnly
+                stmt.execOnly inp
             block:
                 let stmt = conn.prepNew("select * from abc")
                 let ds = stmt.exec
@@ -649,8 +939,7 @@ suite "Testing real database schemas":
                 else:
                     qry &= " where SomeValue < 0"
                 let stmt = conn.prep(qry)
-                stmt.bindParams inp
-                discard stmt.exec
+                stmt.execOnly inp
         expect OdbcException:
             testInner()
 
@@ -662,7 +951,7 @@ suite "Testing real database schemas":
             let inp = TestObj(someValue: 5, someName: utf8To16"Yup!")
             block:
                 let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
-                stmt.bindParams(inp, ["someName", "someValue"])
+                stmt.bindParams(["someName", "someValue"], inp)
                 stmt.execOnly
             block:
                 let stmt = conn.prepNew("select * from TwoValue")
@@ -721,15 +1010,6 @@ suite "Testing real database schemas":
             check not compiles(stmt.exec(someValue = 3))
         testInner()
 
-    test "Parameters type that don't cover all parameters creates error":
-        type TestObj = object
-            someValue: int32
-        proc testInner =
-            let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
-            let params = TestObj(someValue: 3)
-            check not compiles(stmt.bindParams params)
-        testInner()
-
     test "Multiple executions of static insert query":
         type TestObj = object
             someValue: int
@@ -739,8 +1019,7 @@ suite "Testing real database schemas":
                 let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
                 for i in 0..3:
                     let inp = TestObj(someName: toArray[1]($i), someValue: i)
-                    stmt.bindParams inp
-                    stmt.execOnly
+                    stmt.execOnly inp
             block:
                 let stmt = conn.prepNew("select * from TwoValue")
                 var row = stmt.initRowSet
@@ -854,8 +1133,7 @@ suite "Testing real database schemas":
                 let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
                 for i in 0..3:
                     let inp = TestObj(someName: toArraySeq[4]($i), someValue: i)
-                    stmt.bindParams inp
-                    stmt.execOnly
+                    stmt.execOnly inp
             block:
                 let stmt = conn.prepNew("select * from TwoValue")
                 var row = stmt.initRowSet

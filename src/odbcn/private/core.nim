@@ -340,7 +340,7 @@ const
         otTimestamp: @[SQL_TYPE_TIMESTAMP.TSqlSmallInt, SQL_TIMESTAMP],
         otGuid: @[SQL_GUID.TSqlSmallInt],
     ]
-    primTyAsBestOdbcTy = [
+    odbcTyAsPrimTy = [
         ## Describes the "SQL data type" most appropriate for a "C data type".
         ## This mapping differs from `primTyAsOdbcTy` in that this is used to
         ## determine the "SQL data type" a query parameter should have, instead
@@ -413,7 +413,7 @@ func toPrimTy[T](ty: typedesc[T]): OdbcPrimType =
     {.error: ty.name & " not implemented for `toPrimTy`".}
 
 func toCTy(x: OdbcPrimType): TSqlSmallInt = primTyAsCTy[x]
-func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsBestOdbcTy[x]
+func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = odbcTyAsPrimTy[x]
 func toCTy(x: typedesc): TSqlSmallInt = x.toPrimTy.toCTy
 
 func odbcToPrimTy(ty: TSqlSmallInt): OdbcPrimType =
@@ -1029,13 +1029,19 @@ proc bindParamPtr(stmt: OdbcStmt, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
         0, param, TSqlLen(paramLen), nil))
 
+# NOTE: Do not support `WideCString` because the owned object (WideCStringObj)
+# goes out of scope right after `bindParam`, leading to UB.
 proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
-               param: ptr (WideCString | WideCStringObj | seq[OdbcArrayType])) =
+               param: ptr (WideCStringObj | seq[OdbcArrayType])) =
     const
         primTy = toPrimTy(param[].type)
         cTy = toCTy(primTy)
         odbcTy = toBestOdbcTy(primTy)
     bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, param[].len)
+
+template bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr string) =
+    var wideParam = utf8To16(param[])
+    bindParam(stmt, idx, addr(wideParam))
 
 proc bindParam[I](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr array[I, OdbcArrayType]) =
     const
@@ -1065,39 +1071,40 @@ proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr T) =
     {.error: "Type `" & $T.type  & "` is not a supported type " &
         "for binding parameters.".}
 
-template initParamVal(s: string): seq[Utf16Char] =
-    utf8To16(s)
+template bindParamWrapper(stmt, idx, val) =
+    when compiles(unsafeAddr(val)):
+        {.hint[ConvFromXtoItselfNotNeeded]: off.}:
+            bindParam(OdbcStmt(stmt), idx, unsafeAddr(val))
+    else:
+        var param = val
+        {.hint[ConvFromXtoItselfNotNeeded]: off.}:
+            bindParam(OdbcStmt(stmt), idx, addr(param))
 
-template initParamVal[T](s: T): T =
-    s
+func formatNotEnoughParams(exp, got: int): string =
+    "Number of parameters in query (" & $exp & ") is not the same as " &
+        "supplied parameters (" & $got & ")"
 
-# NOTE: Memory unsafe. Make sure `params` doesn't leave the stack until the
-# statement has been executed.
-# NOTE: Size of a parameter is capped at 4000 UTF-16 characters or 8000 bytes.
-# All strings are converted to UTF-16, so 4000 characters most likely apply.
-# Exceeding this truncates the parameter to 4000/8000.
-# TODO: Add warning when a parameter's size exceeds the cap.
-macro bindParamsSingle(stmt: OdbcStmt, params: varargs[untyped]) =
-    ## The simplest form of parameterized query. Bind parameters for queries
-    ## that don't have a constant string query. Order of parameters is the same
-    ## as the order of `?` in the query.
+func checkNumParams(arr: int, paramsLen: static int) =
+    if arr != paramsLen:
+        raise newException(OdbcException,
+            formatNotEnoughParams(arr, paramsLen))
+
+proc checkNumParams(arr: static int, paramsLen: static int) =
+    when arr != paramsLen:
+        {.error: formatNotEnoughParams(arr, paramsLen).}
+
+macro bindParamsSimple(stmt: OdbcAnyStmt, params: varargs[untyped]) =
     result = newStmtList()
     for i, param in params:
         let idx = TSqlUSmallInt(i + 1)
-        result.add quote do:
-            when `param` is static:
-                const param1 = initParamVal(`param`)
-                var param = param1
-            else:
-                var param = initParamVal(`param`)
-            bindParam(`stmt`, `idx`, addr(param))
+        result.add getAst(bindParamWrapper(stmt, idx, param))
 
 # Reason for not implementing this: it would have `O(n*k)` if-statements (code
 # complexity) at run-time, where `n` is the number of query parameters, and `k`
 # is the number of elements in `params`. It's much simpler and efficient to use
 # indexed `?` for this instead.
 template bindParamsKeyVal(
-    stmt: OdbcStmt,
+    stmt: OdbcAnyStmt,
     order: openArray[string],
     params: varargs[untyped],
 ) =
@@ -1105,7 +1112,7 @@ template bindParamsKeyVal(
         "Use single parameters (just `?`) instead.".}
 
 macro bindParamsKeyVal(
-    stmt: OdbcStmt,
+    stmt: OdbcAnyStmt,
     order: static openArray[string],
     params: varargs[untyped],
 ) =
@@ -1119,13 +1126,72 @@ macro bindParamsKeyVal(
                 let
                     val = param[1]
                     idx = TSqlUSmallInt(i + 1)
-                result.add quote do:
-                    var param = initParamVal(`val`)
-                    bindParam(`stmt`, `idx`, addr(param))
+                result.add getAst(bindParamWrapper(stmt, idx, val))
                 break paramLoop
             macros.error "Parameter named `" & nextParam &
                 "` in SQL query is missing from the key-value list."
 
+iterator objectFields(ty: NimNode): string =
+    ty.expectKind nnkObjectTy
+    let recList = ty.findChild it.kind == nnkRecList
+    for identDefs in recList:
+        yield identDefs[0].strVal
+
+template bindParamsOneSimple(stmt: OdbcAnyStmt, params) =
+    for i, val in enumerate fields(params):
+        let idx = TSqlUSmallInt(i + 1)
+        bindParamWrapper(stmt, idx, val)
+
+template bindParamsOne[T: not OdbcFixedLenType and (object or tuple)](
+    stmt: OdbcAnyStmt,
+    params: T,
+    _: openArray[string],
+) =
+    bindParamsOneSimple(stmt, params)
+
+macro bindParamsOne[T: not OdbcFixedLenType and object](
+    stmt: OdbcAnyStmt,
+    params: T,
+    order: static openArray[string],
+) =
+    if order.anyIt(it == ""):
+        return quote do:
+            bindParamsOneSimple(`stmt`, `params`)
+    result = newStmtList()
+    let keys = params.getTypeImpl.objectFields.toSeq
+    for i, nextParam in order:
+        let idx = TSqlUSmallInt(i + 1)
+        if not keys.anyIt(cmpIgnoreStyle(nextParam, it) == 0):
+            macros.error "Parameter named `" & nextParam &
+                "` in SQL query is missing from the fields in the parameter object."
+        result.add quote do:
+            for key, val in fieldPairs `params`:
+                when cmpIgnoreStyle(`nextParam`, key) == 0:
+                    bindParamWrapper(`stmt`, `idx`, val)
+
+template bindParamsOne[T: OdbcFixedLenType or not (object or tuple)](
+    stmt: OdbcAnyStmt,
+    params: T,
+    order: openArray[string],
+) =
+    checkNumParams(order.len, 1)
+    bindParamWrapper(stmt, TSqlUSmallInt(1), params)
+
+#template bindParamsOne[T: OdbcFixedLenType or not (object or tuple)](
+#    stmt: OdbcAnyStmt,
+#    params: T,
+#    order: static openArray[string],
+#) =
+#    when order.len != 1:
+#        {.error: formatNotEnoughParams(order.len, 1).}
+#    bindParamWrapper(stmt, TSqlUSmallInt(1), params)
+
+# NOTE: Memory unsafe. Make sure `params` doesn't leave the stack until the
+# statement has been executed.
+# NOTE: Size of a parameter is capped at 4000 UTF-16 characters or 8000 bytes.
+# All strings are converted to UTF-16, so 4000 characters most likely apply.
+# Exceeding this truncates the parameter to 4000/8000.
+# TODO: Add warning when a parameter's size exceeds the cap.
 macro bindParams*(
     stmt: OdbcAnyStmt,
     order: openArray[string],
@@ -1137,53 +1203,25 @@ macro bindParams*(
     ## must be the same as the number of parameters in the query. In this case
     ## `params` may be key-value pairs. If the length of `order` is incorrect,
     ## then the ODBC C library will raise an error.
-    if params.len == 0:
+    ##
+    ## `params` may be just an object or tuple, in which case their fields are
+    ## bound to the parameters in the query in order. Specify a static `order`
+    ## if only a subset of the fields must be bound, or the parameters go in a
+    ## specific order.
+    let paramsLen = params.len
+    if paramsLen == 0:
         return
     if params[0].kind == nnkExprEqExpr:
         quote do:
-            {.hint[ConvFromXtoItselfNotNeeded]: off.}:
-                bindParamsKeyVal(OdbcStmt(`stmt`), `order`, `params`)
-    else:
+            bindParamsKeyVal(`stmt`, `order`, `params`)
+    elif params.len == 1:
         quote do:
-            {.hint[ConvFromXtoItselfNotNeeded]: off.}:
-                bindParamsSingle(OdbcStmt(`stmt`), `params`)
-
-template bindParams*[T: object or tuple](stmt: OdbcAnyStmt, params: T) =
-    for i, _, val in enumerate fieldPairs(params):
-        let idx = TSqlUSmallInt(i + 1)
-        bindParam(OdbcStmt(stmt), idx, unsafeAddr(val))
-
-iterator objectFields(ty: NimNode): string =
-    ty.expectKind nnkObjectTy
-    let recList = ty.findChild it.kind == nnkRecList
-    for identDefs in recList:
-        yield identDefs[0].strVal
-
-macro bindParams*[T: object or tuple](stmt: OdbcAnyStmt, params: T, order: static openArray[string]) =
-    ## Bind parameters similarly to `bindParams`, except bind from an object
-    ## instance instead of a varargs. `order`'s length must be the same as the
-    ## number of parameters in the query. If the length of `order` is
-    ## incorrect, then the ODBC C library will raise an error at runtime.
-    ##
-    ## This is ideal for repeated executions of a prepared "INSERT" query.
-    result = newStmtList()
-    let keys =
-        if T is object:
-            params.getTypeImpl.objectFields.toSeq
-        else:
-            @[]
-    # TODO: Drop this?
-    let bindParam = bindSym("bindParam", brOpen)
-    for i, nextParam in order:
-        let idx = TSqlUSmallInt(i + 1)
-        if keys.len != 0 and nextParam != "" and allIt(keys, cmpIgnoreStyle(nextParam, it) != 0):
-            macros.error "Parameter named `" & nextParam &
-                "` in SQL query is missing from the fields in the parameter object."
-        result.add quote do:
-            for key, val in fieldPairs `params`:
-                when cmpIgnoreStyle(`nextParam`, key) == 0:
-                    {.hint[ConvFromXtoItselfNotNeeded]: off.}:
-                        `bindParam`(OdbcStmt(`stmt`), `idx`, unsafeAddr(val))
+            bindParamsOne(`stmt`, `params`, `order`)
+    else:
+        macros.hint("O " & $order.len & " " & $params.len & " PARAMS " & params.astGenRepr & " REPR " & order.astGenRepr)
+        quote do:
+            checkNumParams(`order`.len, `paramsLen`)
+            bindParamsSimple(`stmt`, `params`)
 
 # {{{2 SQLBindCol
 
@@ -1275,7 +1313,7 @@ proc findEndOfParam(x: string): int =
     for i, c in x:
         if c notin {'a'..'z', 'A'..'Z', '0'..'9'}:
             return i
-    x.len - 1
+    x.len
 
 # Strip away parameter name at the beginning of the string.
 func parsePart(part: string): (string, string) =
@@ -1441,14 +1479,14 @@ proc unbind*(ds: sink OdbcPreparedResultSet): OdbcPreparedStmt =
     ds.unbindAll
     ds.transit OdbcPreparedStmt
 
-template basePrepExec(stmt: OdbcPreparedStmt, params: varargs[untyped]) =
-    var numParams: TSqlSmallInt
-    odbcCheck(stmt, SQLNumParams(SqlHandle(stmt), numParams))
-    if numParams != varargsLen(params):
-        raise newException(OdbcException, "Number of parameters in query (" &
-            $numParams & ") and `params` (" & $varargsLen(params) & ") is not the same.")
-    bindParamsSingle(OdbcStmt(stmt), params)
-    execInternal(OdbcStmt(stmt))
+macro basePrepExec(stmt: OdbcPreparedStmt, params: varargs[untyped]) =
+    if params.anyIt(it.kind == nnkExprEqExpr):
+        macros.error "Cannot use key-val parameters for non-constant prepared query"
+    quote do:
+        var numParams: TSqlSmallInt
+        odbcCheck(`stmt`, SQLNumParams(SqlHandle(`stmt`), numParams))
+        bindParams(`stmt`, newSeq[string](numParams), `params`)
+        execInternal(OdbcStmt(`stmt`))
 
 template exec*(stmt: sink OdbcPreparedStmt, params: varargs[untyped]): OdbcPreparedResultSet =
     ## Execute the prepared statement and transition into a result set.
@@ -1551,14 +1589,14 @@ macro prep*(stmt: sink OdbcStmt, qry: static string,
             OdbcGenRow {.gensym.} = `dataTy`
 
         template baseExecute(stmt: typed, params: varargs[untyped]) {.gensym.} =
-            bindParams(OdbcStmt(stmt), `paramNames`, params)
+            bindParams(stmt, `paramNames`, params)
             execInternal(OdbcStmt(stmt))
 
         template bindParams[T: object or tuple](
             stmt: OdbcGenTyPreparedResultSet | OdbcGenTyPreparedStmt,
             params: T,
         ) {.used.} =
-            bindParams(stmt, params, `paramNames`)
+            bindParams(stmt, `paramNames`, params)
 
         template exec(stmt: sink OdbcGenTyPreparedStmt,
                       params: varargs[untyped]): OdbcGenTyPreparedResultSet {.used.} =
@@ -1676,3 +1714,9 @@ iterator listDataSources*(env: OdbcEnv = globalOdbcEnv,
         rc = doSql(SQL_FETCH_NEXT)
 
 {.pop.}
+
+when isMainModule:
+    import unittest
+    check parseQuery("select ?, ?") == ("select ?, ?", @["", ""])
+    check parseQuery("select ?, ?, ?") == ("select ?, ?, ?", @["", "", ""])
+    check parseQuery("select ?x") == ("select ?", @["x"])

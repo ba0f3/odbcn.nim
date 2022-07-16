@@ -144,6 +144,15 @@ For 1.0 release:
 * [ ] Add UTF-16 conversion for `seq[char]` values?
 * [ ] Add tests for typed `next(OdbcAnyResult, T)` (and consequently typed
   `items` iterator)
+* [ ] Split SQL Server-specific integration tests into its own file
+  * Motivation: integration tests can be run with SQLite
+  * This makes it easier to run integrations tests with CI, because the
+    heavy SQL Server dependencies (docker, FreeTDS, SQL Server) are not
+    required
+* [ ] Add `insert into` abstraction, that makes it easier to construct the
+  query
+* [ ] Add tests for overloading `bindCol`, `getData` and `bindParam` procs in
+  foreign modules
 
 Other tasks:
 

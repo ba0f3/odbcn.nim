@@ -410,7 +410,7 @@ func toPrimTy[T](_: typedesc[seq[T]]): OdbcPrimType = elemToPrimTy(T)
 func toPrimTy[I, T](_: typedesc[array[I, T]]): OdbcPrimType = elemToPrimTy(T)
 
 func toPrimTy[T](ty: typedesc[T]): OdbcPrimType =
-    {.error: ty.name & " not implemented for `toPrimTy`".}
+    {.error: $ty & " not implemented for `toPrimTy`".}
 
 func toCTy(x: OdbcPrimType): TSqlSmallInt = primTyAsCTy[x]
 func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsBestOdbcTy[x]

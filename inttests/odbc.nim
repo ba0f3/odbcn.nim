@@ -293,6 +293,14 @@ suite "Statements that check if SQL Server data types work":
             check conn.execScalar"select len(VeryLong) from #abc".toInt == 3500
             check $conn.execScalar"select VeryLong from #abc" == param
         doTest()
+
+    test "Parameterized empty string":
+        proc doTest =
+            let ret = conn.execScalar("select ?", "")
+            echo ret.repr
+            check $ret == ""
+        doTest()
+
     test "Unicode characters are inserted correctly":
         proc doTest =
             discard conn.exec"create table #abc (SomeCol nvarchar(max))"

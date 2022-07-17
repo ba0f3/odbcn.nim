@@ -1020,17 +1020,23 @@ proc getDatas*[T: not OdbcFixedLenType and (object or tuple)](ds: OdbcAnyResult,
 # This could be implemented for `Option[T]` types.
 
 proc bindParamPtr(stmt: OdbcStmt, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
-                  odbcTy: TSqlSmallInt, param: pointer, paramLen: int) =
+                  odbcTy: TSqlSmallInt, param: pointer, paramLen: int,
+                  indPtr: ptr TSqlLen) =
     odbcCheck(stmt, SQLBindParameter(
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
-        0, param, TSqlLen(paramLen), nil))
+        0, param, TSqlLen(paramLen), indPtr))
 
 template bindParamArr(stmt, idx, param) =
     const
         primTy = toPrimTy(param[].type)
         cTy = toCTy(primTy)
         odbcTy = toBestOdbcTy(primTy)
-    bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, param[].len)
+    let len = param[].len
+    if len == 0:
+        var indPtr = SQL_NULL_DATA
+        bindParamPtr(stmt, idx, cTy, odbcTy, nil, 0, indPtr.addr)
+    else:
+        bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, len, nil)
 
 proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
                param: ptr (WideCString | WideCStringObj | seq[OdbcArrayType])) =

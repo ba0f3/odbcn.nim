@@ -321,6 +321,8 @@
 ##
 ## ## Specializing and error handling
 ##
+## .. note:: Does not work yet.
+##
 ## The following procs can be overridden by using a custom type `T`. These
 ## extend the `bindParams`, `bindCols`, `getDatas`, and generally ways to use
 ## custom objects with query results.

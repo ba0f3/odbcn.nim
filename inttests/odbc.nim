@@ -817,55 +817,55 @@ suite "Testing real database schemas":
             check not compiles(conn.exec(qry, val = inp))
         doTest(3)
 
-    test "bindParam override":
-        type
-            ArraySeq[I: static int, T] = object
-                len: int
-                data: array[I, T]
+    #test "bindParam override":
+    #    type
+    #        ArraySeq[I: static int, T] = object
+    #            len: int
+    #            data: array[I, T]
 
-        proc `=destroy`[I, T](x: var ArraySeq[I, T]) =
-            for i in 0..<x.len:
-                `=destroy`(x.data[i])
+    #    proc `=destroy`[I, T](x: var ArraySeq[I, T]) =
+    #        for i in 0..<x.len:
+    #            `=destroy`(x.data[i])
 
-        proc `=copy`[I, T](dst: var ArraySeq[I, T], src: ArraySeq[I, T]) {.error.}
+    #    proc `=copy`[I, T](dst: var ArraySeq[I, T], src: ArraySeq[I, T]) {.error.}
 
-        proc toOpenArray[I, T](x: ArraySeq[I, T]): openArray[T] =
-            x.data.toOpenArray(0, x.len - 1)
+    #    proc toOpenArray[I, T](x: ArraySeq[I, T]): openArray[T] =
+    #        x.data.toOpenArray(0, x.len - 1)
 
-        func toPrimTy[I, T](_: typedesc[ArraySeq[I, T]]): OdbcPrimType = elemToPrimTy(T)
+    #    func toPrimTy[I, T](_: typedesc[ArraySeq[I, T]]): OdbcPrimType = elemToPrimTy(T)
 
-        proc bindParam[I, T](ds: OdbcStmt, idx: TSqlUSmallInt, param: ptr ArraySeq[I, T]) =
-            const
-                primTy = toPrimTy(param[].type)
-                cTy = toCTy(primTy)
-                odbcTy = toBestOdbcTy(primTy)
-            bindParamPtr(ds, idx, cTy, odbcTy, param[].data[0].addr, param[].len)
+    #    proc bindParam[I, T](ds: OdbcStmt, idx: TSqlUSmallInt, param: ptr ArraySeq[I, T]) =
+    #        const
+    #            primTy = toPrimTy(param[].type)
+    #            cTy = toCTy(primTy)
+    #            odbcTy = toBestOdbcTy(primTy)
+    #        bindParamPtr(ds, idx, cTy, odbcTy, param[].data[0].addr, param[].len)
 
-        proc toArraySeq[I](s: string): ArraySeq[I, char] =
-            assert s.len <= I
-            copyMem(result.data[0].addr, s[0].unsafeAddr, s.len)
-            result.len = s.len
+    #    proc toArraySeq[I](s: string): ArraySeq[I, char] =
+    #        assert s.len <= I
+    #        copyMem(result.data[0].addr, s[0].unsafeAddr, s.len)
+    #        result.len = s.len
 
-        type TestObj = object
-            someValue: int
-            someName: ArraySeq[4, char]
-        proc testInner =
-            block:
-                let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
-                for i in 0..3:
-                    let inp = TestObj(someName: toArraySeq[4]($i), someValue: i)
-                    stmt.bindParams inp
-                    stmt.execOnly
-            block:
-                let stmt = conn.prepNew("select * from TwoValue")
-                var row = stmt.initRowSet
-                let ds = stmt.exec
-                for i in 0..3:
-                    check ds.next(row)
-                    check row.someValue == i
-                    check $row.someName[0] == $i
-                check not ds.next
-        testInner()
+    #    type TestObj = object
+    #        someValue: int
+    #        someName: ArraySeq[4, char]
+    #    proc testInner =
+    #        block:
+    #            let stmt = conn.prepNew("insert TwoValue values (?someName, ?someValue)")
+    #            for i in 0..3:
+    #                let inp = TestObj(someName: toArraySeq[4]($i), someValue: i)
+    #                stmt.bindParams inp
+    #                stmt.execOnly
+    #        block:
+    #            let stmt = conn.prepNew("select * from TwoValue")
+    #            var row = stmt.initRowSet
+    #            let ds = stmt.exec
+    #            for i in 0..3:
+    #                check ds.next(row)
+    #                check row.someValue == i
+    #                check $row.someName[0] == $i
+    #            check not ds.next
+    #    testInner()
 
 suite "Default values":
     setup:

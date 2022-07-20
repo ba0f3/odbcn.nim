@@ -345,9 +345,9 @@ const
         ## This mapping differs from `primTyAsOdbcTy` in that this is used to
         ## determine the "SQL data type" a query parameter should have, instead
         ## of determining the "C data type" to use when retrieving data.
-        otByteArray: SQL_BINARY.TSqlSmallInt,
-        otCharArray: SQL_CHAR,
-        otWideArray: SQL_WCHAR,
+        otByteArray: SQL_VARBINARY.TSqlSmallInt,
+        otCharArray: SQL_VARCHAR,
+        otWideArray: SQL_WVARCHAR,
         otBool: SQL_BIT,
         otInt8: SQL_TINYINT,
         otInt16: SQL_SMALLINT,
@@ -1026,6 +1026,8 @@ proc bindParamPtr(stmt: OdbcStmt, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
         0, param, TSqlLen(paramLen), indPtr))
 
+let nilTwoBytes: array[2, uint8] = [0'u8, 0'u8]
+
 template bindParamArr(stmt, idx, param) =
     const
         primTy = toPrimTy(param[].type)
@@ -1033,8 +1035,7 @@ template bindParamArr(stmt, idx, param) =
         odbcTy = toBestOdbcTy(primTy)
     let len = param[].len
     if len == 0:
-        var indPtr = SQL_NULL_DATA
-        bindParamPtr(stmt, idx, cTy, odbcTy, nil, 0, indPtr.addr)
+        bindParamPtr(stmt, idx, cTy, odbcTy, nilTwoBytes[0].unsafeAddr, 0, nil)
     else:
         bindParamPtr(stmt, idx, cTy, odbcTy, param[][0].addr, len, nil)
 

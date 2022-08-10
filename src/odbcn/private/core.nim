@@ -340,7 +340,7 @@ const
         otTimestamp: @[SQL_TYPE_TIMESTAMP.TSqlSmallInt, SQL_TIMESTAMP],
         otGuid: @[SQL_GUID.TSqlSmallInt],
     ]
-    primTyAsBestOdbcTy = [
+    odbcTyAsPrimTy = [
         ## Describes the "SQL data type" most appropriate for a "C data type".
         ## This mapping differs from `primTyAsOdbcTy` in that this is used to
         ## determine the "SQL data type" a query parameter should have, instead
@@ -413,7 +413,7 @@ func toPrimTy[T](ty: typedesc[T]): OdbcPrimType =
     {.error: $ty & " not implemented for `toPrimTy`".}
 
 func toCTy(x: OdbcPrimType): TSqlSmallInt = primTyAsCTy[x]
-func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = primTyAsBestOdbcTy[x]
+func toBestOdbcTy(x: OdbcPrimType): TSqlSmallInt = odbcTyAsPrimTy[x]
 func toCTy(x: typedesc): TSqlSmallInt = x.toPrimTy.toCTy
 
 func odbcToPrimTy(ty: TSqlSmallInt): OdbcPrimType =

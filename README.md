@@ -142,9 +142,30 @@ For 1.0 release:
   correlate with the column name, else the column will not be read into a field
 * [x] Add UTF-8 encoding for `varchar` columns
 * [x] Add UTF-16 conversion for `seq[char]` values?
-  * At least for `bindParams`
 * [ ] Add tests for typed `next(OdbcAnyResult, T)` (and consequently typed
   `items` iterator)
+* [ ] Split SQL Server-specific integration tests into its own file
+  * Motivation: integration tests can be run with SQLite
+  * This makes it easier to run integrations tests with CI, because the
+    heavy SQL Server dependencies (docker, FreeTDS, SQL Server) are not
+    required
+* [ ] Add `insert into` abstraction, that makes it easier to construct the
+  query
+* [ ] Add tests for overloading `bindCol`, `getData` and `bindParam` procs in
+  foreign modules
+* [ ] Add `tryExec*` and `tryConnect` on `OdbcConn` so that exceptions are not
+  raised when it is possible that the operation fails
+* [ ] Somehow improve the stack traces - the large amount of templates and
+  macros make it hard to inspect the stack trace
+* [ ] Add support for `Option[T]` types
+  * With `bindParams` the NULL value is bound
+  * With `getData`, value is assigned `none` if `ind == SQL_NULL_DATA`,
+    otherwise `some` with the value of `SQLGetData`
+  * Do not support `bindCols`, because there's no place to store the `ind`
+    pointer (indicating if the `SQLFetch` got a NULL value) between call to
+    `SQLBindCol` and `SQLFetch`
+  * Not supported as nonsensical: `Option[seq[T]]` (or option of any
+    sequence-like type)
 
 Other tasks:
 
@@ -157,3 +178,6 @@ Other tasks:
   * I don't know the scale of implementing async; I know async in Nim is very
     hard to extend at the moment, so this may be a futile effort
   * Will probably require existing structures to change
+* [ ] Add ORM table insert abstraction (getting table schema and generating
+  structures)
+  * Possibly do this in a separate repo, to avoid bloat of features

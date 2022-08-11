@@ -68,11 +68,16 @@ proc toArray[I: static int](s: string): array[I, char] =
 proc toCString[I](s: array[I, char]): cstring =
     cast[cstring](s[0].unsafeAddr)
 
-suite "Pre-connection utilities":
-    test "listDrivers":
-        check listDrivers().toSeq.len > 0
-    test "listDataSources":
-        check listDataSources().toSeq.len > 0
+test "DSN and driver iterator finds tested DSN":
+    let dsns = listDataSources().toSeq
+    var dsnDriver: tuple[server, driver: string] = ("", "")
+    for dsn in dsns:
+        if cmpIgnoreCase(dsn.server, dbServer) == 0:
+            dsnDriver = dsn
+            break
+    check dsnDriver.server != ""
+    let drivers = listDrivers().toSeq
+    check drivers.anyIt(cmpIgnoreCase(it.name, dsnDriver.driver) == 0)
 
 suite "Establishing connection":
     test "Base":

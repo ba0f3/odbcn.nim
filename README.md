@@ -120,7 +120,7 @@ For 1.0 release:
 * [ ] Document remaining functions in core.nim
 * [x] In `odbcn/connstr`, add support of `{...}` for attribute values, which is
   used to quote the value if it contains unsupported characters in ODBC
-* [ ] Use `openArray[char]` instead of `string` for `utf8To16` parameter
+* [x] Use `openArray[char]` instead of `string` for `utf8To16` parameter
 * [ ] Document or fix why the array fields in `OdbcValue` are hidden
 * [ ] Make `listDrivers` and `listDataSources` use UTF-16 version?
   * Current implementation may get ANSI-encoded data, which is undesirable;

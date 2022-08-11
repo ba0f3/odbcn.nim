@@ -9,7 +9,8 @@ a verb.
 # Testing
 
 `inttests/odbc.nim` contains integration tests that are not executed by CI.
-These must be executed locally.
+These must be executed locally. The convenience `run_full_test.sh` script runs
+both integration tests and unit tests.
 
 It's recommended to use `unixodbc` as Driver Manager, `freetds` as ODBC driver
 and SQL Server in a Docker container to run the integration tests. The tests

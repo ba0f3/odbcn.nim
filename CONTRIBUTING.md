@@ -6,6 +6,30 @@ a verb.
 
 [1]: https://github.com/joelparkerhenderson/git-commit-message
 
+# Before coding
+
+If you're making a fix of a bug, it's perfectly fine to push the fix to the
+mailing list without making a ticket.
+
+If you're making a feature, such as one from the TODOs in the README, always
+issue a ticket first in which the design can be discussed. This is for the sake
+of not wasting your time. The TODOs may be outdated, or I may disagree with the
+design to the point of having to discard all the code.
+
+# Submitting code
+
+As stated in the README, this project uses `git send-email` instead of "PRs".
+This means instead of opening PRs, you send an email with the `git send-email`
+CLI command. The following setups `git send-email` for this repository:
+
+```
+cd odbcn-nim
+git config sendemail.to ~mjaa/odbcn-nim@lists.sr.ht
+```
+
+Then use `git send-email` as described in [this
+tutorial](https://git-send-email.io/).
+
 # Testing
 
 `inttests/odbc.nim` contains integration tests that are not executed by CI.

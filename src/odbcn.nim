@@ -188,6 +188,32 @@
 ##   stmt = rs.unbind
 ## ```
 ##
+## ## SELECT query with typed rowset
+##
+## Note that the order of fields in the object must match the order of columns
+## in the query.
+##
+## #### Simple
+##
+## ```nim
+## type MyTable = object
+##   myIntCol: int
+##   aString: string
+## let rs = conn.exec "select MyIntCol, MyStringCol from MyTable"
+## var row: MyTable # Or `(int, string)` or `tuple[myIntCol: int, aString: string]`
+## if rs.next(row):
+##   echo row.repr
+## ```
+##
+## #### Iterator
+##
+## ```nim
+## let rs = conn.exec "select MyIntCol, MyStringCol from MyTable"
+## for row in rs.items((int, string)):
+##   assert row.type is (int, string)
+##   echo row.repr
+## ```
+##
 ## ## SELECT query with bound columns
 ##
 ## This section describes how to retrieve database rows into Nim `object`s
@@ -228,23 +254,42 @@
 ## order.
 ##
 ## ```nim
-## import
-##   odbcn,
-##   odbcn/widestrx
+## import odbcn
 ## type InsertObj = object
 ##   someValue: int32
-##   someString: seq[Utf16Char]
+##   someString: string
 ## let stmt = conn.prep "insert TwoValue (SomeValue, SomeString) values (?, ?)"
-## let params = InsertObj(someValue: 3, someString: utf8To16"Hello")
-## stmt.bindParams params
-## stmt.execOnly
+## let params = InsertObj(someValue: 3, someString: "Hello")
+## stmt.execOnly params
 ## ```
 ##
-## `string` is not supported as a parameter type when used with `bindParams`,
-## because the ODBC API generally only supports ANSI and UTF-16LE encoded
-## strings, and `string` is conventionally UTF-8 encoded. Convert to UTF-16
-## like in the example above, or use `seq[char]` to represent ASCII or an ANSI
-## codepage.
+## `string` fields are first converted to UTF-16 before being set as a
+## parameter. As such, use `seq[Utf16Char]` instead to optimize this.
+##
+## .. note:: It is not possible to bind a `const`ant object because of a bug in
+##   Nim.
+##
+## #### Named parameters
+##
+## Name the parameters to match parameters with object field names.
+##
+## ```nim
+## import odbcn
+## type InsertObj = object
+##   anInt, twoInt: int
+##   aString: string
+## let params = InsertObj(anInt: 2, twoInt: 9, aString: "Hi")
+## let rs = conn.exec("""
+## insert into ThreeValue (SomeValue, SomeString, TwoString)
+## values (?anInt, ?aString, ?aString)""",
+## params)
+## ```
+##
+## This is useful if
+##
+## * Only subset of the object fields are used as parameters, or
+## * The parameters go in a specific order, or
+## * A single object field is mapped to several parameters
 ##
 ## ## ORM
 ##
@@ -360,4 +405,4 @@
 
 {.warning[UnusedImport]: off.}:
     import odbcn/[private/core, functions, connstr]
-export core
+export core except bindParams

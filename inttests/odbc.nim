@@ -317,10 +317,7 @@ suite "Statements that check if SQL Server data types work":
         proc testInner =
             discard conn.exec"create table #abc (VeryLong varchar(max))"
 
-            # `newWideCString` is unnecessary, because `string`s are converted
-            # to UTF-16 regardless, but this demonstrates that `WideCString`
-            # can be used for optimization purposes.
-            discard conn.exec("insert #abc values (?)", 'b'.repeat(3000).newWideCString)
+            discard conn.exec("insert #abc values (?)", 'b'.repeat(3000))
             check conn.execScalar"select datalength(VeryLong) from #abc".toInt == 3000
             check conn.execScalar"select len(VeryLong) from #abc".toInt == 3000
             discard conn.exec("update #abc set VeryLong = VeryLong + ?",
@@ -540,7 +537,7 @@ suite "Testing real database schemas":
 
     test "Compile-time query for variable sized data":
         proc testInner =
-            discard conn.exec("insert abc values (?)", 'b'.repeat(3000).newWideCString)
+            discard conn.exec("insert abc values (?)", 'b'.repeat(3000))
             check conn.execScalar"select datalength(VeryLong) from abc".toInt == 3000
             check conn.execScalar"select len(VeryLong) from abc".toInt == 3000
             discard conn.exec("update abc set VeryLong = VeryLong + ?",

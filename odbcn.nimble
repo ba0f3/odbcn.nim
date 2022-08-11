@@ -17,7 +17,7 @@ requires "nim >= 1.6.2"
 import std/os
 
 task test, "Runs the test suite":
-    for module in ["connstr"]:
+    for module in ["connstr", "private/core"]:
         let moduleFile = "src/odbcn" / module & ".nim"
         echo "Testing " & moduleFile & "..."
         exec "nim r --verbosity:0 " & moduleFile

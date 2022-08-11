@@ -1678,3 +1678,10 @@ iterator listDataSources*(env: OdbcEnv = globalOdbcEnv,
         rc = doSql(SQL_FETCH_NEXT)
 
 {.pop.}
+
+when isMainModule:
+    import unittest
+    test "parseQuery":
+        check parseQuery("select ?, ?") == ("select ?, ?", @["", ""])
+        check parseQuery("select ?, ?, ?") == ("select ?, ?, ?", @["", "", ""])
+        check parseQuery("select ?x") == ("select ?", @["x"])

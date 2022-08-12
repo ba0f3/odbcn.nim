@@ -433,6 +433,18 @@
 ## while rs.nextResultSet:
 ##   discard
 ## ```
+##
+## # Troubleshooting
+##
+## ## RAII compile-time errors
+##
+## This error from `nim c` can occur sometimes:
+##
+## > '=copy' is not available for type <OdbcStmt>; requires a copy because it's
+## > not the last read of 'stmt`gensym0'; routine: conntmp
+##
+## This happens when the RAII-type is initialized at module-scope. In this
+## case, the value must be created at proc-scope.
 
 {.warning[UnusedImport]: off.}:
     import odbcn/[private/core, functions, connstr]

@@ -965,12 +965,23 @@ proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var string) =
     getData(ds, colIdx, wideVal)
     ret = utf16To8(wideVal)
 
-proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType) =
+proc getDataTry(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType): bool =
     const cTy = toCTy(ret.type)
     var ind: TSqlLen
     odbcCheck ds, SQLGetData(
         SqlHandle(ds), colIdx, cTy, ret.addr, 0, ind.addr)
-    if ind == SQL_NULL_DATA: ret.reset
+    result = ind != SQL_NULL_DATA
+
+proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcFixedLenType) =
+    if not getDataTry(ds, colIdx, ret):
+        ret.reset
+
+proc getData[T: OdbcFixedLenType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var Option[T]) =
+    var val: T
+    if getDataTry(ds, colIdx, val):
+        ret = some(val)
+    else:
+        ret = none(T)
 
 proc getData[T](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T) =
     {.error: "Type `" & $ret.type  & "` is not a supported type " &
@@ -982,14 +993,14 @@ proc getData[T](ds: OdbcAnyResult, colIdx: TSqlUSmallInt, ret: var T) =
     mixin getData
     getData(OdbcStmt(ds), colIdx, ret)
 
-proc getDatas*[T: OdbcFixedLenType or not (object or tuple)](
+proc getDatas*[T: (OdbcFixedLenType or Option) or not (object or tuple)](
     ds: OdbcAnyResult,
     ret: var T,
     _: static openArray[string] = [],
 ) =
     getData(ds, 1, ret)
 
-macro getDatas*[T: not OdbcFixedLenType and (object or tuple)](
+macro getDatas*[T: not (OdbcFixedLenType or Option) and (object or tuple)](
     ds: OdbcAnyResult,
     ret: var T,
     order: static openArray[string],
@@ -1001,7 +1012,7 @@ macro getDatas*[T: not OdbcFixedLenType and (object or tuple)](
                 when cmpIgnoreStyle(`nextCol`, key) == 0:
                     getData(`ds`, TSqlUSmallInt(`i` + 1), val)
 
-proc getDatas*[T: not OdbcFixedLenType and (object or tuple)](ds: OdbcAnyResult, ret: var T) =
+proc getDatas*[T: not (OdbcFixedLenType or Option) and (object or tuple)](ds: OdbcAnyResult, ret: var T) =
     ## Get all data from the current row in the result set `ds`, and put it
     ## into fields of `ret`. It is an ODBC error if this is called twice since
     ## the previous `next <#next>`_ call. This also fails if `next <#next,T>`_

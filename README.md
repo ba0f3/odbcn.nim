@@ -158,9 +158,9 @@ For 1.0 release:
   raised when it is possible that the operation fails
 * [ ] Somehow improve the stack traces - the large amount of templates and
   macros make it hard to inspect the stack trace
-* [ ] Add support for `Option[T]` types
+* [x] Add support for `Option[T]` types
   * [x] With `bindParams` the NULL value is bound
-  * With `getData`, value is assigned `none` if `ind == SQL_NULL_DATA`,
+  * [x] With `getData`, value is assigned `none` if `ind == SQL_NULL_DATA`,
     otherwise `some` with the value of `SQLGetData`
   * Do not support `bindCols`, because there's no place to store the `ind`
     pointer (indicating if the `SQLFetch` got a NULL value) between call to

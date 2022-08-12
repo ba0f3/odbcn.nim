@@ -539,6 +539,16 @@ suite "Select into typed scalar type":
             check got[0].type is (string, int)
         doTest()
 
+    test "Optional some":
+        proc doTest =
+            check conn.exec("select 3").items(Option[int]).toSeq == @[some(3)]
+        doTest()
+
+    test "Optional none":
+        proc doTest =
+            check conn.exec("select NULL").items(Option[int]).toSeq == @[none(int)]
+        doTest()
+
 static:
     let initFile = currentSourcePath() /../ "init_databases.nim"
     let cmd = &"nim r --cpu:{hostCPU} " & initFile & " -c \"" & connString & "\""

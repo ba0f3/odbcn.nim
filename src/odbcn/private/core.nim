@@ -1066,6 +1066,19 @@ proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
     odbcCheck(stmt, SQLBindParameter(
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, 0, 0, param, 0, nil))
 
+let nullInd = SQL_NULL_DATA
+
+proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr Option[T]) =
+    if param[].isSome:
+        bindParam(stmt, idx, param[].get.addr)
+    else:
+        const
+            primTy = toPrimTy(T)
+            cTy = toCTy(primTy)
+            odbcTy = toBestOdbcTy(primTy)
+        odbcCheck(stmt, SQLBindParameter(
+            SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, 0, 0, nil, 0, nullInd.unsafeAddr))
+
 proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr T) =
     {.error: "Type `" & $T.type  & "` is not a supported type " &
         "for binding parameters.".}
@@ -1146,14 +1159,14 @@ template bindParamsOneSimple(stmt: OdbcAnyStmt, params) =
         let idx = TSqlUSmallInt(i + 1)
         bindParamWrapper(stmt, idx, val)
 
-template bindParamsOne[T: not OdbcFixedLenType and (object or tuple)](
+template bindParamsOne[T: not (OdbcFixedLenType or Option) and (object or tuple)](
     stmt: OdbcAnyStmt,
     params: T,
     _: openArray[string],
 ) =
     bindParamsOneSimple(stmt, params)
 
-macro bindParamsOne[T: not OdbcFixedLenType and object](
+macro bindParamsOne[T: not (OdbcFixedLenType or Option) and object](
     stmt: OdbcAnyStmt,
     params: T,
     order: static openArray[string],
@@ -1173,7 +1186,7 @@ macro bindParamsOne[T: not OdbcFixedLenType and object](
                 when cmpIgnoreStyle(`nextParam`, key) == 0:
                     bindParamWrapper(`stmt`, `idx`, val)
 
-template bindParamsOne[T: OdbcFixedLenType or not (object or tuple)](
+template bindParamsOne[T: OdbcFixedLenType or Option or not (object or tuple)](
     stmt: OdbcAnyStmt,
     params: T,
     order: openArray[string],

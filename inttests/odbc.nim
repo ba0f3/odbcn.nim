@@ -178,6 +178,17 @@ template testBothPrepNonPrep(name, templ) =
                 check got.bytes == param
             doTest()
 
+        test "Optional some int parameter":
+            proc doTest =
+                check templ(conn, "select ?", some(3))[0].toInt == 3
+            doTest()
+
+        test "Optional none int parameter":
+            proc doTest =
+                let got = templ(conn, "select case when ? is null then 1 else 0 end", none(int))[0]
+                check got.toBool
+            doTest()
+
         # bindParamsOneSimple
         test "One parameter, too few parameters creates error, static query":
             proc doTest = check not compiles(templ(conn, "select ?, ?", 4))

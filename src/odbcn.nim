@@ -291,6 +291,37 @@
 ## * The parameters go in a specific order, or
 ## * A single object field is mapped to several parameters
 ##
+## ## NULL values
+##
+## This library supports setting NULL parameters and getting NULL values from
+## result sets. This is done with the `std/options.Option` type. The
+## `OdbcValue` type does not differentiate between NULL and the default value,
+## so use the `Option` type if it is important to differentiate.
+##
+## This shows how selecting NULL into an `Option` sets the value to `none`.
+##
+## ```nim
+## import odbcn, std/options, std/sequtils
+## let vals = conn.exec("select NULL").items(Option[int]).toSeq
+## doAssert vals == @[none(int)]
+## ```
+##
+## For non-`Option` types, the default value is set.
+##
+## ```nim
+## import odbcn, std/sequtils
+## let vals = conn.exec("select NULL").items(int).toSeq
+## doAssert vals == @[0]
+## ```
+##
+## This shows how to set a NULL parameter.
+##
+## ```nim
+## import odbcn, std/options, std/sequtils
+## let vals = conn.exec("select ?", none(int)).items(Option[int]).toSeq
+## doAssert vals == @[none(int)]
+## ```
+##
 ## ## ORM
 ##
 ## This library supports ORM to a lesser extent with `prep

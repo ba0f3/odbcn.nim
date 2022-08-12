@@ -29,10 +29,10 @@ doesn't work, the C API wrapper is likely at fault.
 See [the docs](https://mjaa.srht.site/odbcn-nim/odbcn.html) for in-depth manual
 to the various features and API reference.
 
-If you encounter issues, please submit a ticket by sending an email to
-[~mjaa/odbcn-nim@todo.sr.ht](mailto:~/mjaa/odbcn-nim@todo.sr.ht). You don't
-need to be registered at sr.ht to issue a ticket this way. Subscribe to this
-tracker by sending an email to
+If you encounter issues, please make sure you're registered at sr.ht, and
+submit a ticket by sending an email to
+[~mjaa/odbcn-nim@todo.sr.ht](mailto:~/mjaa/odbcn-nim@todo.sr.ht). Subscribe to
+this tracker by sending an email to
 [~/mjaa/odbcn-nim/subscribe@todo.sr.ht](mailto:~/mjaa/odbcn-nim/subscribe@todo.sr.ht).
 
 All contributions are done by means of `git send-email`. Send these to the

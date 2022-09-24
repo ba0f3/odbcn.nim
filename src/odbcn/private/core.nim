@@ -679,9 +679,8 @@ proc inTran*(conn: OdbcConn): bool =
     conn.getIntAttr(SQL_ATTR_AUTOCOMMIT) == SQL_AUTOCOMMIT_OFF
 
 proc beginTran*(conn: OdbcConn) =
-    ## Start a transaction. Prefer use of `withTran <#withTran.t,OdbcConn,>`_
-    ## over this. Commit with `commitTran <#commitTran,OdbcConn>`_ or rollback
-    ## with `rollbackTran <#rollbackTran,OdbcConn>`_.
+    ## Start a transaction. Commit with `commitTran <#commitTran,OdbcConn>`_ or
+    ## rollback with `rollbackTran <#rollbackTran,OdbcConn>`_.
     assert not conn.inTran
     conn.setAttr(SQL_ATTR_AUTOCOMMIT, SQL_AUTOCOMMIT_OFF)
 
@@ -696,26 +695,6 @@ proc rollbackTran*(conn: OdbcConn) =
     assert conn.inTran
     odbcCheck conn, SQLEndTran(SQL_HANDLE_DBC, SqlHandle(conn), SQL_ROLLBACK)
     conn.setAttr(SQL_ATTR_AUTOCOMMIT, SQL_AUTOCOMMIT_ON)
-
-template withTran*(conn: OdbcConn, code) =
-    ## Starts a transaction, executes `code`, then commits the transaction if
-    ## no exception occurred, otherwise rollbacks the transaction.
-    ##
-    ## Prefer use of this over `beginTran <#beginTran,OdbcConn>`_, etc.
-    ##
-    ## ```nim
-    ## conn.withTran:
-    ##   assert conn.inTran
-    ##   discard conn.exec("update MyTable set MyCol = ?", 3)
-    ##   discard conn.exec("update MyTable2 set MyCol = ?", 3)
-    ## ```
-    conn.beginTran
-    try:
-        code
-        conn.commitTran
-    except:
-        conn.rollbackTran
-        raise
 
 # {{{2 Connection creation
 

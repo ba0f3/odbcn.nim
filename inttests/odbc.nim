@@ -796,10 +796,10 @@ suite "Statements that check if SQL Server data types work":
         proc doTest =
             check not conn.inTran
             discard conn.exec"create table #abc (SomeCol nvarchar(max))"
-            conn.withTran:
-                discard conn.exec("insert #abc values (?)", "hey")
-                check conn.inTran
-                discard conn.exec("update #abc set SomeCol = ?", "no")
+            conn.beginTran
+            discard conn.exec("insert #abc values (?)", "hey")
+            discard conn.exec("update #abc set SomeCol = ?", "no")
+            conn.commitTran
             check $conn.execScalar"select SomeCol from #abc" == "no"
             check not conn.inTran
         doTest()

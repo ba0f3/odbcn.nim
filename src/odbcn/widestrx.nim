@@ -4,7 +4,22 @@
 ## compile-time, as opposed to `system/widestrs.newWideCString`, which uses raw
 ## allocation. Raw allocations are not permitted in nimvm.
 
-import system/widestrs {.all.}
+import std/unicode {.all.}
+
+const
+    UNI_REPLACEMENT_CHAR = Utf16Char(0xFFFD'i16)
+    UNI_MAX_BMP = 0x0000FFFF
+    UNI_MAX_UTF16 = 0x0010FFFF
+
+    halfShift = 10
+    halfBase = 0x0010000
+    halfMask = 0x3FF
+
+    UNI_SUR_HIGH_START = 0xD800
+    UNI_SUR_HIGH_END = 0xDBFF
+    UNI_SUR_LOW_START = 0xDC00
+    UNI_SUR_LOW_END = 0xDFFF
+    UNI_REPL = 0xFFFD
 
 # Copy of `system/widestrs.fastRuneAt` except type of `s` changed from `cstring`
 # to `openArray[char]`.

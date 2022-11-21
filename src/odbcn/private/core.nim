@@ -1017,23 +1017,37 @@ proc getDatas*[T: not (OdbcFixedLenType or Option) and (object or tuple)](ds: Od
 proc bindParamPtr(stmt: OdbcStmt, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
                   odbcTy: TSqlSmallInt, param: pointer, paramLen: int,
                   indPtr: ptr TSqlLen) =
+    # FAQ: Why is there redundancy in how the buffer size is given
+    # (StrLen_or_IndPtr and ColumnSize)? Different drivers get the buffer size
+    # in different ways:
+    # * ODBC Driver 17 and 18 (and maybe older) use `StrLen_or_IndPtr` argument
+    #   to determine size in bytes of buffer; ColumnSize and BufferLength are
+    #   ignored
+    # * FreeTDS use ColumnSize argument to determine size in length (number of
+    #   elements, e.g. UTF16 string has byteSize/2 length); BufferLength and
+    #   StrLen_or_IndPtr are ignored
     odbcCheck(stmt, SQLBindParameter(
         SqlHandle(stmt), idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
-        0, param, TSqlLen(paramLen), indPtr))
+        0, param, 0, indPtr))
 
-let nilTwoBytes: array[2, uint8] = [0'u8, 0'u8]
-
-proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt,
-               param: openArray[OdbcArrayType]) =
+proc bindParamPtrGeneric(
+    stmt: OdbcStmt,
+    idx: TSqlUSmallInt,
+    param: openArray[OdbcArrayType],
+    indPtr: ptr TSqlLen,
+) =
     const
         primTy = toPrimTy(param.type)
         cTy = toCTy(primTy)
         odbcTy = toBestOdbcTy(primTy)
-    let len = param.len
-    if len == 0:
-        bindParamPtr(stmt, idx, cTy, odbcTy, nilTwoBytes[0].unsafeAddr, 0, nil)
-    else:
-        bindParamPtr(stmt, idx, cTy, odbcTy, param[0].unsafeAddr, len, nil)
+    let
+        len = param.len
+        buf = if len == 0: nil else: param[0].unsafeAddr
+    bindParamPtr(stmt, idx, cTy, odbcTy, buf, len, indPtr)
+
+template bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: openArray[OdbcArrayType]) =
+    var len = if param.len == 0: 0 else: param.len * sizeof(param[0])
+    bindParamPtrGeneric(stmt, idx, param, len.addr)
 
 template bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: openArray[char]) =
     var wideParam = utf8To16(param)

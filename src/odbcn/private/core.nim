@@ -1043,7 +1043,8 @@ proc bindParamPtrGeneric(
     let
         len = param.len
         buf = if len == 0: nil else: param[0].unsafeAddr
-    bindParamPtr(stmt, idx, cTy, odbcTy, buf, len, indPtr)
+        colLen = if len == 0: 1 else: len # Workaround for bug in "SQL Server" driver
+    bindParamPtr(stmt, idx, cTy, odbcTy, buf, colLen, indPtr)
 
 template bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: openArray[OdbcArrayType]) =
     var len = if param.len == 0: 0 else: param.len * sizeof(param[0])

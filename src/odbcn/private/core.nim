@@ -857,10 +857,9 @@ template odbcCol*(i: TSqlUSmallInt) {.pragma.}
 
 {.push sideEffect, tags: [IOEffect].}
 
-proc getData[I; T: OdbcArrayType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var array[I, T]) =
-    const
-        cTy = toCTy(ret.type)
-        chunkSize = sizeOf(ret)
+proc getData[T: OdbcArrayType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var openArray[T]) =
+    const cTy = toCTy(ret.type)
+    let chunkSize = ret.len * sizeof(T)
     var
         ind: TSqlLen
     odbcCheck(ds, SQLGetData(
@@ -869,6 +868,9 @@ proc getData[I; T: OdbcArrayType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var 
     case ind
     of SQL_NULL_DATA: ret[0] = T(0)
     else: discard
+
+proc getData[I; T: OdbcArrayType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var array[I, T]) =
+    getData(ds, colIdx, ret.toOpenArray(0, ret.len-1))
 
 proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var seq[OdbcArrayType]) =
     const

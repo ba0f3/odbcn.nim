@@ -542,6 +542,17 @@ suite "Select into typed scalar type":
             check conn.exec("select NULL").items(Option[int]).toSeq == @[none(int)]
         doTest()
 
+    test "openArray":
+        proc doTest =
+            proc aux(rs: auto, x: var openArray[byte]) =
+                check rs.next(x)
+            let param: array[4, byte] = [1'u8, 4, 5, 1]
+            let rs = conn.exec("select ?", param)
+            var ret: array[4, byte]
+            aux(rs, ret)
+            check param == ret
+        doTest()
+
 static:
     let initFile = currentSourcePath() /../ "init_databases.nim"
     let cmd = &"nim r --cpu:{hostCPU} " & initFile & " -c \"" & connString & "\""

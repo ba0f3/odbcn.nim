@@ -292,9 +292,9 @@ const
 type
     OdbcValue* = object
         case kind*: OdbcPrimType
-        of otByteArray: bytes: seq[byte]
-        of otCharArray: chars: seq[char]
-        of otWideArray: wchars: seq[Utf16Char]
+        of otByteArray: bytes*: seq[byte]
+        of otCharArray: chars*: seq[char]
+        of otWideArray: wchars*: seq[Utf16Char]
         of odbcIntKinds: i64*: int64
         of otFloat32: f32*: float32
         of otFloat64: f64*: float64
@@ -425,24 +425,11 @@ func odbcToPrimTy(ty: TSqlSmallInt): OdbcPrimType =
             return i
     raise newException(OdbcException, "not implemented " & $ty)
 
-proc toTy(ty: OdbcPrimType): NimNode =
-    ## Best native Nim type to represent the C type.
-    case ty
-    of otByteArray: seq[byte].getTypeInst
-    of otCharArray, otWideArray: string.getTypeInst
-    of odbcIntKinds: int64.getTypeInst
-    of otFloat32: float32.getTypeInst
-    of otFloat64: float64.getTypeInst
-    of otDate: OdbcDate.getTypeInst
-    of otTime: OdbcTime.getTypeInst
-    of otTimestamp: OdbcTimestamp.getTypeInst
-    of otGuid: GUID.getTypeInst
-
 # {{{2 Conversion from OdbcValue to various primitives
 
 func `$`*(x: OdbcValue): string =
     case x.kind
-    of otByteArray: # May or may not be UTF-8. Ignoring encoding for now
+    of otByteArray:
         x.bytes.toOpenArray(0, x.bytes.len - 1).map(toHex).join
     of otCharArray:
         x.chars.toOpenArray(0, x.chars.len - 1).toString
@@ -456,46 +443,30 @@ func `$`*(x: OdbcValue): string =
     of otTimestamp: $x.datetime
     of otGuid: $x.guid
 
-func toBool*(x: OdbcValue): bool =
-    case x.kind
-    of otCharArray, otWideArray: ($x).parseBool
-    of odbcIntKinds: x.i64 != 0
-    of otFloat32: x.f32 != 0.0
-    of otFloat64: x.f64 != 0.0
-    else: raise newException(ValueError, "Cannot convert " & $x.kind & " to bool")
-
-func toInt*(x: OdbcValue): int =
-    case x.kind
-    of otCharArray, otWideArray: ($x).parseInt
-    of odbcIntKinds: x.i64.int
-    of otFloat32: x.f32.toInt
-    of otFloat64: x.f64.toInt
-    else: raise newException(ValueError, "Cannot convert " & $x.kind & " to integer")
-
-func toFloat*(x: OdbcValue): BiggestFloat =
-    case x.kind
-    of otCharArray, otWideArray: ($x).parseFloat
-    of odbcIntKinds: x.i64.int.toFloat
-    of otFloat32: x.f32
-    of otFloat64: x.f64
-    else: raise newException(ValueError, "Cannot convert " & $x.kind & " to float")
-
-proc bytes*(x: OdbcValue): lent seq[byte] = x.bytes
-proc chars*(x: OdbcValue): lent seq[char] = x.chars
-    ## Return reference to underlying char array. The actual `seq` field in
-    ## `OdbcValue` cannot be public because it would break memory safety
-    ## guarantees. TODO: Describe those guarantees.
-proc wchars*(x: OdbcValue): lent seq[Utf16Char] = x.wchars
-    ## Return reference to underlying wide char array. The actual `seq` field
-    ## in `OdbcValue` cannot be public because it would break memory safety
-    ## guarantees. TODO: Describe those guarantees.
+func isDefault*(x: OdbcValue): bool =
+    ## Whether `x` is the default value, which odbcn determines to mean
+    ## "uninitialized" for the purpose of lazily initializing it. Motivation
+    ## for this proc is that `default(OdbcValue)` is not a valid expression due
+    ## to the object `case` statement.
+    x.kind == otByteArray and x.bytes.len == 0
 
 proc `[]`*(x: OdbcRowSet, idx: int): lent OdbcValue = x.vals[idx]
     ## Index for a value in a row set.
 
-proc getOrDefault*(x: OdbcRowSet, idx: int): OdbcValue =
+proc tryGet(x: OdbcRowSet, idx: int, ret: var OdbcValue): bool =
     if idx >= 0 and idx < x.vals.len:
-        result = x[idx]
+        ret = x[idx]
+        result = true
+
+proc get*(x: OdbcRowSet, idx: int): Option[OdbcValue] =
+    ## Try to get column `idx` from the rowset, otherwise `none(OdbcValue)`.
+    result = some(default OdbcValue)
+    if not x.tryGet(idx, result.get):
+        result.reset
+
+proc getOrDefault*(x: OdbcRowSet, idx: int): OdbcValue =
+    ## Try to get column `idx` from the rowset, otherwise `default(OdbcValue)`.
+    discard x.tryGet(idx, result)
 
 proc index*(x: OdbcRowSet, key: string): int =
     ## Find the column index of a column name `key`.
@@ -962,6 +933,19 @@ proc getData[T: OdbcFixedLenType](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var 
     else:
         ret = none(T)
 
+proc getData(ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var OdbcValue) =
+    case ret.kind
+    of otByteArray  : ds.getData(colIdx, ret.bytes)
+    of otCharArray  : ds.getData(colIdx, ret.chars)
+    of otWideArray  : ds.getData(colIdx, ret.wchars)
+    of odbcIntKinds : ds.getData(colIdx, ret.i64)
+    of otFloat32    : ds.getData(colIdx, ret.f32)
+    of otFloat64    : ds.getData(colIdx, ret.f64)
+    of otDate       : ds.getData(colIdx, ret.date)
+    of otTime       : ds.getData(colIdx, ret.time)
+    of otTimestamp  : ds.getData(colIdx, ret.datetime)
+    of otGuid       : ds.getData(colIdx, ret.guid)
+
 proc getData[T](ds: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T) =
     {.error: "Type `" & $ret.type  & "` is not a supported type " &
         "for getting data into.".}
@@ -1384,22 +1368,27 @@ proc discardResults*(ds: OdbcAnyResult) =
     while ds.nextResultSet:
         discard
 
-proc initRowSet(ds: OdbcStmt, ret: var OdbcRowSet) =
-    var cols: TSqlSmallInt
-    odbcCheck ds, SqlHandle(ds).SQLNumResultCols(cols)
-    ret.vals.setLen cols
-    ret.names.setLen cols
+proc describeCol(ds: OdbcStmt, i: int): tuple[val: OdbcValue, name: string] =
     var
-        colName: array[256, TSqlChar]
+        colName {.noinit.}: array[256, TSqlChar]
         colNameLen, odbcTy, decimals, null: TSqlSmallInt
         colSize: TSqlULen
-    for i in 1..cols:
-        odbcCheck ds, SqlHandle(ds).SQLDescribeCol(
-            TSqlUSmallInt(i), colName[0].addr, TSqlSmallInt(colName.len), colNameLen,
-            odbcTy, colSize, decimals, null)
-        ret.names[i-1] = colName.toOpenArray(0, colNameLen - 1).toString
-        let kind = odbcTy.odbcToPrimTy
-        ret.vals[i-1] = OdbcValue(kind: kind)
+    odbcCheck ds, SqlHandle(ds).SQLDescribeCol(
+        TSqlUSmallInt(i + 1), colName[0].addr, TSqlSmallInt(colName.len), colNameLen,
+        odbcTy, colSize, decimals, null)
+    result[1] = colName.toOpenArray(0, colNameLen - 1).toString
+    let kind = odbcTy.odbcToPrimTy
+    result[0] = OdbcValue(kind: kind)
+
+proc numResultCols(ds: OdbcStmt): TSqlSmallInt =
+    odbcCheck ds, SqlHandle(ds).SQLNumResultCols(result)
+
+proc initRowSet(ds: OdbcStmt, ret: var OdbcRowSet) =
+    let cols = ds.numResultCols
+    ret.vals.setLen cols
+    ret.names.setLen cols
+    for i in 0..<cols:
+        (ret.vals[i], ret.names[i]) = ds.describeCol(i)
 
 proc initRowSet*(ds: OdbcAnyResult or OdbcAnyPrepared, ret: var OdbcRowSet) =
     ## Initalize a row set for use when iterating over each row in the dataset.
@@ -1423,18 +1412,19 @@ proc next*(ds: OdbcAnyResult, ret: var OdbcRowSet): bool =
     if ret.vals.len == 0:
         ds.initRowSet(ret)
     for i in 0..<ret.vals.len:
-        let idx = TSqlUSmallInt(i + 1)
-        case ret.vals[i].kind
-        of otByteArray  : ds.getData(idx, ret.vals[i].bytes)
-        of otCharArray  : ds.getData(idx, ret.vals[i].chars)
-        of otWideArray  : ds.getData(idx, ret.vals[i].wchars)
-        of odbcIntKinds : ds.getData(idx, ret.vals[i].i64)
-        of otFloat32    : ds.getData(idx, ret.vals[i].f32)
-        of otFloat64    : ds.getData(idx, ret.vals[i].f64)
-        of otDate       : ds.getData(idx, ret.vals[i].date)
-        of otTime       : ds.getData(idx, ret.vals[i].time)
-        of otTimestamp  : ds.getData(idx, ret.vals[i].datetime)
-        of otGuid       : ds.getData(idx, ret.vals[i].guid)
+        ds.getData(TSqlUSmallInt(i + 1), ret.vals[i])
+    true
+
+proc next*(ds: OdbcAnyResult, ret: var OdbcValue): bool =
+    ## Advance the result set cursor one row and retrieve the data in the first
+    ## column of the row into `ret`.
+    if not ds.next:
+        return false
+    if ret.isDefault:
+        if numResultCols(OdbcStmt(ds)) == 0:
+            return false
+        ret = describeCol(OdbcStmt(ds), 0).val
+    ds.getData(TSqlUSmallInt(1), ret)
     true
 
 proc next*[T](ds: OdbcAnyResult, ret: var T): bool =
@@ -1453,28 +1443,25 @@ iterator items*[T](ds: OdbcAnyResult, _: typedesc[T]): T =
     while ds.next(row):
         yield row
 
-template execFirst*(conn: OdbcConn, qry: string, params: varargs[untyped]): Option[OdbcRowSet] =
-    ## Specialized `exec` that only gets the first row of a query. This is
-    ## useful for queries with "top 1" or "output" clauses. If no row is found
-    ## `none` is returned, otherwise `some(row)`.
+proc first*[T](ds: sink OdbcAnyResult, _: typedesc[T]): Option[T] =
+    ## Get first row of the result set. The result set is discarded.
     bind options.some
     bind options.get
     bind options.none
-    let ds = exec(conn, qry, params)
-    var ret = some(default OdbcRowSet)
-    if not ds.next(ret.get):
-        ret = none(OdbcRowSet)
+    result = some(default(T))
+    if not ds.next(result.get):
+        result = none(T)
     ds.discardResults
-    ret
 
-template execScalar*(conn: OdbcConn, qry: string, params: varargs[untyped]): OdbcValue =
-    ## Specialized `exec` that only fetches the first column of the first
-    ## row of a query. If there is no row in the result set, or no columns in
-    ## the result set, an empty value is returned.
-    bind options.get
-    bind options.map
-    let row = execFirst(conn, qry, params)
-    row.map(proc(it: OdbcRowSet): OdbcValue = it.getOrDefault(0)).get(default OdbcValue)
+proc first*(ds: sink OdbcAnyResult): Option[OdbcRowSet] = first(ds, OdbcRowSet)
+
+proc firstOrDefault*[T](ds: sink OdbcAnyResult, _: typedesc[T]): T =
+    ## Get first row of the result set, or the default value of T. The result
+    ## set is discarded.
+    discard ds.next(result)
+    ds.discardResults
+
+proc firstOrDefault*(ds: sink OdbcAnyResult): OdbcRowSet = firstOrDefault(ds, OdbcRowSet)
 
 # {{{2 Prepared execution
 
@@ -1536,69 +1523,18 @@ macro withExec*(stmt: var OdbcAnyPrepared, paramsAndCode: varargs[untyped]) =
             `code`
             `stmt` = unbind(rs)
 
-# {{{1 ORM
-# {{{2 Type generation
-
-func describeToList(desc: openArray[string]): seq[string] =
-    for i in 0..<desc.len div 2:
-        result.add desc[i*2]
-
-proc gorgeRaise(cmd: string): string {.compileTime.} =
-    let (outp, rc) = gorgeEx(cmd, cache = "odbcn")
-    if rc != 0:
-        macros.error "Couldn't execute command '" & cmd & "' output: " & outp
-    outp
-
-func parseDesc(x: string): seq[string] =
-    if x == "":
-        return
-    x.splitLines
-
-func genRowType(desc: openArray[string]): NimNode =
-    case desc.len div 2
-    of 0: ident"void"
-    of 1: desc[1].parseInt.OdbcPrimType.toTy
-    else:
-        let recList = nnkRecList.newNimNode
-        for i in 0..<desc.len div 2:
-            let
-                fieldName = desc[i*2].normalize.ident
-                ty = desc[i*2+1].parseInt.OdbcPrimType
-            recList.add newIdentDefs(
-                fieldName,
-                #nnkPragmaExpr.newTree(
-                #    fieldName,
-                #    nnkPragma.newTree(
-                #        nnkExprColonExpr.newTree(newIdentNode("odbcTy"), newLit(ty)))),
-                ty.toTy)
-        nnkObjectTy.newTree(newEmptyNode(), newEmptyNode(), recList)
-
-# {{{2 Main
-
 proc newLit(i: Utf16Char): NimNode {.borrow.}
 proc `==`*(x, y: Utf16Char): bool {.borrow.}
 
-macro prep*(stmt: sink OdbcStmt, qry: static string,
-            connString: static string = ""): untyped =
+macro prep*(stmt: sink OdbcStmt, qry: static string): untyped =
     ## Prepare a compile-time-known query.
     let
         (normQueryUtf8, paramNames) = qry.parseQuery
         normQueryUtf16 = normQueryUtf8.utf8To16.newLit
-        desc =
-            if connString != "":
-                gorgeRaise("odbcn_describeqry \"" & normQueryUtf8 & "\" \"" & connString & "\"").parseDesc
-            else:
-                @[]
-        colOrder = desc.describeToList
-    assert desc.len mod 2 == 0, $desc
-    let dataTy = desc.genRowType
-    when defined odbcnDebug:
-        macros.hint("Generated type: " & dataTy.repr, callsite())
     quote do:
         type
             OdbcGenTyPreparedStmt {.gensym, stmtKind, preparedKind.} = distinct OdbcStmt
             OdbcGenTyPreparedResultSet {.gensym, stmtKind, resultKind.} = distinct OdbcGenTyPreparedStmt
-            OdbcGenRow {.gensym.} = `dataTy`
 
         template baseExecute(stmt: typed, params: varargs[untyped]) {.gensym.} =
             bindParams(stmt, `paramNames`, params)
@@ -1625,43 +1561,14 @@ macro prep*(stmt: sink OdbcStmt, qry: static string,
             closeCursor(OdbcStmt(stmt))
             unbindParams(OdbcStmt(stmt))
 
-        when OdbcGenRow isnot void:
-            proc initRowSet(stmt: OdbcGenTyPreparedStmt | OdbcGenTyPreparedResultSet): OdbcGenRow {.used.} =
-                discard
-
-            proc next[T](ds: OdbcGenTyPreparedResultSet, ret: var T): bool {.used.} =
-                if not ds.next:
-                    return false
-                getDatas(ds, ret, `colOrder`)
-                true
-
-            template execFirst(stmt: OdbcGenTyPreparedStmt,
-                               params: varargs[untyped]): Option[OdbcGenRow] {.used.} =
-                bind options.get
-                bind options.some
-                bind options.none
-                baseExecute(stmt, params)
-                var ret = some(default OdbcGenRow)
-                if not next(OdbcGenTyPreparedResultSet(stmt), get(ret)):
-                    ret = none(OdbcGenRow)
-                closeCursor(OdbcStmt(stmt))
-                unbindParams(OdbcStmt(stmt))
-                ret
-
-            iterator items(ds: OdbcGenTyPreparedResultSet): OdbcGenRow {.used.} =
-                var row: OdbcGenRow
-                while ds.next(row):
-                    yield row
-
         const query = `normQueryUtf16`
         prepareInternal(`stmt`, cast[seq[Utf16Char]](query))
         transit(`stmt`, OdbcGenTyPreparedStmt)
 
-template prep*(conn: OdbcConn, qry: static string,
-               connString: static string = ""): untyped =
+template prep*(conn: OdbcConn, qry: static string): untyped =
     ## Prepare a compile-time-known query.
     let stmt = conn.newStmt
-    prep(stmt, qry, connString)
+    prep(stmt, qry)
 
 # {{{1 Utility ODBC functions
 

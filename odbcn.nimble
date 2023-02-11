@@ -5,8 +5,6 @@ author        = "Håvard Mjaavatten"
 description   = "Abstraction of ODBC"
 license       = "MIT"
 srcDir        = "src"
-bin = @["odbcn/odbcn_describeqry"]
-installExt = @["nim"]
 
 
 # Dependencies

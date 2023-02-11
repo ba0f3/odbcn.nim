@@ -1,9 +1,8 @@
 ## Abstraction of ODBC, which is an API for accessing many different DBMSes.
 ## This library provides both a familiar API for creating connections and
-## executing queries, and ORM functionality to syntax check and generate
-## structures from queries. The data design uses Nim's new RAII instead of
-## `ref`s for managing FFI handles. This library can therefore be used in
-## non-GC environments.
+## executing queries. The data design uses Nim's new RAII instead of `ref`s for
+## managing FFI handles. This library can therefore be used in non-GC
+## environments.
 ##
 ## This module provides practical instructions on how to use this library. All
 ## API functions can be found in the `private/core` module.
@@ -62,15 +61,100 @@
 ## <odbcn/private/core.html#listDataSources.i,OdbcEnv,DataSourcesFilter>`_
 ## iterator.
 ##
-## ## Quick SELECT query
+## ## SELECT query
+##
+## Make result set variable
 ##
 ## ```nim
+## type MyObject = object
+##   myIntCol: int
+##   myStringCol: string
+##
 ## let rs = conn.exec "select MyIntCol, MyStringCol from MyTable"
+## ```
+##
+## Alternatives that do the same in different ways:
+##
+## #### Typed
+##
+## Recommended when the desired types are known at compile-time.
+##
+## ```nim
+## var row: MyObject
+## while rs.next(row):
+##   let anInt = row.myIntCol + 1
+##   echo "My integer column: ", anInt
+##   echo "My string column: ", row.myStringCol
+## ```
+##
+## ```nim
+## for row in rs.items(MyObject):
+##   let anInt = row.myIntCol + 1
+##   echo "My integer column: ", anInt
+##   echo "My string column: ", row.myStringCol
+## ```
+##
+## ```nim
+## for row in rs.items((int, string)):
+##   # `row` here is a tuple with `int` and `string` as types
+##   let anInt = row[0] + 1
+##   echo "My integer column: ", anInt
+##   echo "My string column: ", row[1]
+## ```
+##
+## #### Untyped
+##
+## Recommended when the desired types of the columns are not known at
+## compile-time. It is better and simpler to use the typed approach above. The
+## user must convert between types manually by checking `row.kind` with the
+## untyped approach.
+##
+## ```nim
 ## var row: OdbcRowSet
 ## while rs.next(row):
 ##   let anInt = row["MyIntCol"].i64 + 1
 ##   echo "My integer column: ", anInt
 ##   echo "My string column: ", row[1]
+## ```
+##
+## ```nim
+## for row in rs.items(OdbcRowSet):
+##   let anInt = row["MyIntCol"].i64 + 1
+##   echo "My integer column: ", anInt
+##   echo "My string column: ", row[1]
+## ```
+##
+## #### Only getting first row/value
+##
+## If the result set is expected to return at most 1 row, use `first
+## <odbcn/private/core.html#first,sinkOdbcAnyResult,typedesc[T]>`_. It returns
+## an `Option` of the type specified as argument to `first`.
+##
+## ```nim
+## let aTuple = conn.exec("select 3, 'Hey'").first((int, string))
+## doAssert aTuple == some((3, "Hey"))
+## ```
+##
+## ```nim
+## let aRow = conn.exec("select 3, 'Hey'").first
+## # `aRow` is the type `Option[OdbcRowSet]`
+## doAssert aRow.get[0].i32 == 3
+## doAssert $aRow.get[1] == "Hey"
+## ```
+##
+## Can also get into a single value if there is only 1 column.
+##
+## ```nim
+## let anInt = conn.exec("select 3").first(int)
+## doAssert anInt == some(3)
+## ```
+##
+## Another alternative is to use `firstOrDefault
+## <odbcn/private/core.html#firstOrDefault,sinkOdbcAnyResult,typedesc[T]>`_.
+##
+## ```nim
+## let anInt = conn.exec("select 3").firstOrDefault(int)
+## doAssert anInt == 3
 ## ```
 ##
 ## ## Quick UPDATE query
@@ -127,7 +211,7 @@
 ## var row: OdbcRowSet
 ## stmt.withExec(3):
 ##   while rs.next(row):
-##     let anInt = row["MyIntCol"].toInt
+##     let anInt = row["MyIntCol"].i64
 ##     let aString = $row["MyStringCol"] & $anInt
 ## # something else here
 ## stmt.withExec(4):
@@ -188,30 +272,16 @@
 ##   stmt = rs.unbind
 ## ```
 ##
-## ## SELECT query with typed rowset
-##
-## Note that the order of fields in the object must match the order of columns
-## in the query.
-##
-## #### Simple
+## #### Typed parameter
 ##
 ## ```nim
-## type MyTable = object
-##   myIntCol: int
-##   aString: string
-## let rs = conn.exec "select MyIntCol, MyStringCol from MyTable"
-## var row: MyTable # Or `(int, string)` or `tuple[myIntCol: int, aString: string]`
-## if rs.next(row):
-##   echo row.repr
-## ```
-##
-## #### Iterator
-##
-## ```nim
-## let rs = conn.exec "select MyIntCol, MyStringCol from MyTable"
-## for row in rs.items((int, string)):
-##   assert row.type is (int, string)
-##   echo row.repr
+## import odbcn
+## type InsertObj = object
+##   someValue: int32
+##   someString: string
+## let stmt = conn.prep "insert TwoValue (SomeValue, SomeString) values (?, ?)"
+## let params = InsertObj(someValue: 3, someString: "Hello")
+## stmt.execOnly params
 ## ```
 ##
 ## ## SELECT query with bound columns
@@ -321,79 +391,6 @@
 ## let vals = conn.exec("select ?", none(int)).items(Option[int]).toSeq
 ## doAssert vals == @[none(int)]
 ## ```
-##
-## ## ORM
-##
-## This library supports ORM to a lesser extent with `prep
-## <odbcn/private/core.html#prep.t,OdbcConn,staticstring,staticstring>`_. This
-## macro takes a `connString` static argument that is a valid ODBC connection
-## string to a server with the database schema used by the query. At
-## compile-time, this server is connected to using `connString` and the `qry`
-## parameter is prepared, which describes the number and type of columns. With
-## that information, a type representing a column row is generated, which is
-## available with the `initRowSet` proc on the prepared statement handle.
-##
-## This `prep` macro generates the following types. They are gensym'd, and are
-## therefore return values from the generated procs.
-##
-## * `OdbcGenTyPreparedStmt` - returned by the `prep` call
-## * `OdbcGenTyPreparedResultSet` - returned after executing the prepared
-##   statement
-## * `OdbcGenRow` - represents a row in the result set; instantiated with
-##   `initRowSet` proc on the two handles above
-##
-## ```nim
-## using
-##   stmt: OdbcGenTyPreparedStmt | OdbcGenTyPreparedResultSet
-##
-## # Specialized `bindParams` that has a known order of parameters
-## template bindParams[T: object or tuple](stmt; params: T)
-##
-## template exec(
-##   stmt: sink OdbcGenTyPreparedStmt,
-##   params: varargs[untyped]
-## ): OdbcGenTyPreparedResultSet
-##
-## template execOnly(stmt: OdbcGenTyPreparedStmt, params: varargs[untyped])
-##
-## proc unbind(stmt: sink OdbcGenTyPreparedResultSet): OdbcGenTyPreparedStmt
-## ```
-##
-## The following procs are only created if the query produces a result set,
-## e.g. not a normal "UPDATE" statement.
-##
-## ```nim
-## using
-##   stmt: OdbcGenTyPreparedStmt | OdbcGenTyPreparedResultSet
-##
-## proc initRowSet(stmt): OdbcGenRow
-##
-## # Note that `T` is accepted, i.e. other objects than `OdbcGenRow` can be
-## # used.
-## proc next[T](ds: OdbcGenTyPreparedResultSet, ret: var T): bool
-##
-## template execFirst(
-##   stmt: OdbcGenTyPreparedStmt,
-##   params: varargs[untyped]
-## ): OdbcGenRow
-##
-## iterator items(ds: OdbcGenTyPreparedResultSet): OdbcGenRow
-## iterator items[T](ds: OdbcGenTyPreparedResultSet, _: typedesc[T]): T
-## ```
-##
-## When using `prep` it is highly recommended to make a proc that curries the
-## `connString` argument. Calling `prep` is more convenient for the developer
-## that way. E.g.:
-##
-## ```nim
-## template prepThisDb(conn: OdbcConn, qry: static string): untyped =
-##   prep(conn, qry, "ThisOdbcConnectionString")
-## template prepThatDb(conn: OdbcConn, qry: static string): untyped =
-##   prep(conn, qry, "ThatOdbcConnectionString")
-## ```
-##
-## Must use `template`s above, because `prep` generates procs and types in the
-## current scope.
 ##
 ## ## Specializing and error handling
 ##

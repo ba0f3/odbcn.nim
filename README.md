@@ -167,6 +167,25 @@ For 1.0 release:
     `SQLBindCol` and `SQLFetch`
   * ~~Not supported as nonsensical: `Option[seq[T]]` (or option of any
     sequence-like type)~~
+* [ ] Support SQL_NTS in SQLBindParameter for `openArray[char]` and
+    `openArray[Utf16Char]`
+  * `openArray[char|Utf16Char]` will always be regarded as zero-terminated
+    * `getData` adds zero byte at end anyway
+    * `bindParam` will assume there is a zero-byte to terminate the string
+* [ ] today, `bindParam` puts a value into local scope, so it's not possible to
+  bind parameters and then return from the user's proc and execute the query
+  later with the bound parameters
+  * must make sure the SqlLen_Or_IndPtr pointer is a safe pointer that doesn't
+  go out of scope
+  * add mode that checks at compile-time that `bindParam` doesn't insert any
+  variables in scope
+    * e.g. seq will always error here, since the `len`
+    address can change on V2 since it is basically a fat pointer
+    * e.g. string will error out becuase it creates a Utf16 string
+* [ ] Fix `setAttr` so it uses SQLULEN/SQLLEN
+* [ ] Make it possible not to unbind params in `unbind`, so that the same
+  parameters can be reused, with something like `execOnlyKeepParams`, which
+  takes no parameters (the user calls `bindParams` themselves)
 
 Other tasks:
 

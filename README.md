@@ -183,7 +183,7 @@ For 1.0 release:
     address can change on V2 since it is basically a fat pointer
     * e.g. string will error out becuase it creates a Utf16 string
 * [X] Fix `setAttr` so it uses SQLULEN/SQLLEN
-* [ ] Make it possible not to unbind params in `unbind`, so that the same
+* [X] Make it possible not to unbind params in `unbind`, so that the same
   parameters can be reused, with something like `execOnlyKeepParams`, which
   takes no parameters (the user calls `bindParams` themselves)
 

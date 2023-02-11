@@ -1510,6 +1510,15 @@ template execOnly*(stmt: OdbcPreparedStmt, params: varargs[untyped]) =
     closeCursor(OdbcStmt(stmt))
     unbindParams(OdbcStmt(stmt))
 
+proc execOnlyKeepParams*(stmt: OdbcAnyPrepared) =
+    ## Execute the prepared statement and discard the result set. The
+    ## parameters are expected to be bound earlier with `bindParams`. This proc
+    ## does *not* unbind these parameters. This is therefore ideal for reusing
+    ## the bound parameters for multiple executions.
+    execInternal(OdbcStmt(stmt))
+    discardResults(OdbcFastResultSet(stmt))
+    closeCursor(OdbcStmt(stmt))
+
 macro withExec*(stmt: var OdbcAnyPrepared, paramsAndCode: varargs[untyped]) =
     ## Executes the prepared statement and then executes the code in the last
     ## argument to `withExec` where a result set named `rs` with type

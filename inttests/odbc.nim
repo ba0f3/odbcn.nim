@@ -1113,6 +1113,39 @@ suite "Testing real database schemas":
             check stmt.exec.firstOrDefault(myArr.type) == myArr
         doTest()
 
+    test "Reuse bindParams object works":
+        proc doTest =
+            type MyObj = object
+                x: array[4, char]
+                y: int
+            let inps = [
+                MyObj(x: ['a', 'b', '\0', '\0'], y: 3),
+                MyObj(x: ['c', 'a', '\0', '\0'], y: 0),
+            ]
+
+            # Length of 2 checks that only null-terminated string is used, and
+            # not the 2 extra null-bytes. Otherwise "Truncation error" would
+            # occur in ODBC.
+            discard conn.exec "create table #abc (c1 varchar(2), c2 int)"
+
+            block:
+                let stmt = conn.prep("insert into #abc values (?, ?)")
+                var inp = inps[0]
+                stmt.bindParams(inp)
+                stmt.execOnlyKeepParams
+
+                inp = inps[1]
+                stmt.execOnlyKeepParams
+
+            block:
+                let rs = conn.exec("select * from #abc")
+                var inp: MyObj
+                for i in 0..1:
+                    check rs.next(inp)
+                    check inp == inps[i]
+                check not rs.next
+        doTest()
+
     test "Parameter key-vals that don't cover all parameters creates error":
         proc testInner =
             let stmt = conn.prep("insert TwoValue values (?someName, ?someValue)")

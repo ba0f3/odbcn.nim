@@ -1040,6 +1040,15 @@ template bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: openArray[char]) =
     var wideParam = utf8To16(param)
     bindParam(stmt, idx, wideParam)
 
+let sqlnts = SQL_NTS
+
+proc bindParam[I](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr array[I, char | Utf16Char]) =
+    bindParamPtrGeneric(stmt, idx, param[], sqlnts.unsafeAddr)
+
+proc bindParam[I](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr array[I, byte]) =
+    var len {.global.}: TSqlLen = sizeof(param[]) # instantiated per `I`
+    bindParamPtrGeneric(stmt, idx, param[], len.addr)
+
 proc bindParam(stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr SomeFloat) =
     const
         primTy = toPrimTy(param[].type)
@@ -1078,7 +1087,7 @@ proc bindParam[T](stmt: OdbcStmt, idx: TSqlUSmallInt, param: ptr T) =
 # copy/clone `val` instead.
 template bindParamWrapper(stmt, idx, val) =
     {.hint[ConvFromXtoItselfNotNeeded]: off.}:
-        when val is string | seq | openArray | array:
+        when val is string | seq | openArray:
             bindParam(OdbcStmt(stmt), idx, val)
         elif compiles(unsafeAddr(val)):
             bindParam(OdbcStmt(stmt), idx, unsafeAddr(val))

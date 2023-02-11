@@ -167,7 +167,7 @@ For 1.0 release:
     `SQLBindCol` and `SQLFetch`
   * ~~Not supported as nonsensical: `Option[seq[T]]` (or option of any
     sequence-like type)~~
-* [ ] Support SQL_NTS in SQLBindParameter for `openArray[char]` and
+* [X] Support SQL_NTS in SQLBindParameter for `openArray[char]` and
     `openArray[Utf16Char]`
   * `openArray[char|Utf16Char]` will always be regarded as zero-terminated
     * `getData` adds zero byte at end anyway

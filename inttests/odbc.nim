@@ -175,6 +175,17 @@ template testBothPrepNonPrep(name, templ) =
                 check got.bytes == param
             doTest()
 
+        # See implementation of `bindParam(ptr array[I, byte])` for the global
+        # there. That shall be instantiated per `I`.
+        test "array parameter no. 2 assigns new len-global fine":
+            proc doTest =
+                let param: array[8, byte] = [1'u8, 1'u8, 2'u8, 5'u8, 3, 2, 1, 9]
+                let got = templ(conn, "select ?", param).firstOrDefault(OdbcValue)
+                check got.kind == otByteArray
+                check got.bytes.len == 8
+                check got.bytes == param
+            doTest()
+
         test "Optional some int parameter":
             proc doTest =
                 check templ(conn, "select ?", some(3)).first(int) == some(3)
@@ -1089,6 +1100,18 @@ suite "Testing real database schemas":
                 check outp == inp
                 check ds.next(outp) == false
         testInner()
+
+    test "explicit bindParams is memory safe for arrays":
+        proc doTest =
+            var myArr: array[10, char]
+            let str = "Hello"
+            copyMem(myArr[0].addr, str.cstring, str.len)
+            let stmt = conn.prep("select ?")
+            block:
+                stmt.bindParams([""], myArr)
+            let x = int.high # just put something in scope
+            check stmt.exec.firstOrDefault(myArr.type) == myArr
+        doTest()
 
     test "Parameter key-vals that don't cover all parameters creates error":
         proc testInner =

@@ -532,14 +532,14 @@ template genAttrFuncs(baseObj, objs: untyped, sqlSetFunc, sqlGetFunc: typed) =
         ## `SQLSet*Attr` functions for available `attr`s and their expected
         ## type of `n`.
         setAttrLow(baseObj(h), TSqlInteger(attr),
-            cast[SqlPointer](n.TSqlUInteger), SQL_IS_UINTEGER)
+            cast[SqlPointer](n.TSqlULen), SQL_IS_UINTEGER)
 
     proc setAttr*(h: objs, attr, n: int) =
         ## Low-level attribute setter on a handle. See Microsoft docs for
         ## `SQLSet*Attr` functions for available `attr`s and their expected
         ## type of `n`.
         setAttrLow(baseObj(h), TSqlInteger(attr),
-            cast[SqlPointer](n.TSqlInteger), SQL_IS_INTEGER)
+            cast[SqlPointer](n.TSqlLen), SQL_IS_INTEGER)
 
     proc setAttr*(h: objs, attr: int, n: string) =
         ## Low-level attribute setter on a handle. See Microsoft docs for

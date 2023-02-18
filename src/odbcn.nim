@@ -392,19 +392,14 @@
 ## doAssert vals == @[none(int)]
 ## ```
 ##
-## ## Specializing and error handling
+## ## Specializing
 ##
-## .. note:: Does not work yet.
+## `odbcn` supports overloading custom types for parameters and row set
+## columns. Main motivation for doing this is to make it simpler to send an
+## `object` parameter, or get rows into `object`s, without having to use raw
+## ODBC types such as `OdbcDate`, or `string`s for fixed-precision numbers.
 ##
-## The following procs can be overridden by using a custom type `T`. These
-## extend the `bindParams`, `bindCols`, `getDatas`, and generally ways to use
-## custom objects with query results.
-##
-## * `proc bindParam[T](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: ptr T)`
-## * `proc bindCol[T](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T)`
-## * `proc getData[T](stmt: OdbcStmt, colIdx: TSqlUSmallInt, ret: var T)`
-##
-## Extension procs must be in scope at the invocation site in order to be used.
+## See module `dataschema <odbcn/dataschema.html>`_ for documentation.
 ##
 ## ## Query with multiple result sets
 ##

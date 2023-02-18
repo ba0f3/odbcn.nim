@@ -152,7 +152,7 @@ For 1.0 release:
     required
 * [ ] Add `insert into` abstraction, that makes it easier to construct the
   query
-* [ ] Add tests for overloading `bindCol`, `getData` and `bindParam` procs in
+* [X] Add tests for overloading `bindCol`, `getData` and `bindParam` procs in
   foreign modules
 * [ ] Add `tryExec*` and `tryConnect` on `OdbcConn` so that exceptions are not
   raised when it is possible that the operation fails

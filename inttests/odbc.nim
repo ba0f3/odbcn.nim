@@ -875,14 +875,15 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
         proc doTest =
             check conn.execScalar"select len(SomeCol) from #abc".toInt == 1
         doTest()
-    test "Binary representation is in ANSI":
-        proc doTest =
-            block:
-                type BinaryStr = object
-                    someCol: seq[char]
-                let rs = conn.exec("select SomeCol from #abc")
-                check rs.items(BinaryStr).toSeq == @[BinaryStr(someCol: ansiStr.toSeq)]
-        doTest()
+
+    # NOTE: This cannot be tested for "ODBC Driver 13 for SQL Server" and
+    # newer for Linux, because encoding for getting data is always UTF-8.
+    # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/programming-guidelines?view=sql-server-ver16#character-set-support
+    #test "Binary representation is in ANSI":
+    #    proc doTest =
+    #        check conn.exec("select SomeCol from #abc")
+    #            .first(seq[char]) == some(ansiStr.toSeq)
+    #    doTest()
     test "String representation is in UTF-8":
         proc doTest =
             check $conn.execScalar"select SomeCol from #abc" == utf8Str

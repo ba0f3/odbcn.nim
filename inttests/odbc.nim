@@ -1196,7 +1196,14 @@ suite "Testing real database schemas":
             $(obj[0].unsafeAddr.cstring)
 
         var
-            ds = conn.newStmt.selectTables(table = "%Types", tableType = {ttTable})
+            # NOTE: "ODBC Driver for SQL Server" requires catalog and schema to
+            # be specified. It will not default to the currently active
+            # database.
+            ds = conn.newStmt.selectTables(
+                catalog = "test",
+                schema = "dbo",
+                table = "%Types",
+                tableType = {ttTable})
             row: OdbcTables
         ds.bindCols row
         check ds.next

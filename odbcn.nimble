@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.5.4"
+version       = "0.6.0"
 author        = "Håvard Mjaavatten"
 description   = "Abstraction of ODBC"
 license       = "MIT"

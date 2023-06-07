@@ -796,13 +796,6 @@ if dbms != "SQLite":
                 check conn.exec("select VeryLong from temptab").firstOrDefault(string) == param
             doTest()
 
-        test "Parameterized empty string":
-            proc doTest =
-                let ret = conn.exec("select ?", "").first(OdbcValue).get
-                echo ret.repr
-                check $ret == ""
-            doTest()
-
         test "Unicode characters are inserted correctly":
             proc doTest =
                 discard conn.exec"create table temptab (SomeCol nvarchar(max))"
@@ -919,6 +912,35 @@ if dbms != "SQLite":
             proc doTest =
                 check conn.exec("select SomeCol from temptab").first(string) == some(utf8Str)
             doTest()
+
+suite "NULL and empty string":
+    setup:
+        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+
+    teardown:
+        tdConn conn
+
+    test "Parameterized empty string":
+        proc doTest =
+            let ret = conn.exec("select ?", "").first(string).get
+            check ret == ""
+        doTest()
+
+    test "Parameterized empty string in NOT NULL column":
+        proc doTest =
+            discard conn.exec"create table temptab (SomeCol nvarchar(20) not null)"
+            discard conn.exec("insert into temptab (SomeCol) values (?)", "")
+            let ret = conn.exec("select SomeCol from temptab").first(string).get
+            check ret == ""
+        doTest()
+
+    test "Parameterized empty string in NULL column":
+        proc doTest =
+            discard conn.exec"create table temptab (SomeCol nvarchar(20) null)"
+            discard conn.exec("insert into temptab (SomeCol) values (?)", "")
+            let ret = conn.exec("select SomeCol from temptab").first(string).get
+            check ret == ""
+        doTest()
 
 # NOTE: A UTF-8 collation does NOT change how string data is sent. It must
 # still be converted to UTF-16, sent over ODBC API, and then converted back

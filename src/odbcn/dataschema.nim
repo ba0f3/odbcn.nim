@@ -232,10 +232,12 @@ proc bindParamPtr(stmt: SqlHandle, idx: TSqlUSmallInt, cTy: TSqlSmallInt,
         stmt, idx, SQL_PARAM_INPUT, cTy, odbcTy, TSqlULen(paramLen),
         0, param, 0, indPtr))
 
-proc bindParamPtrGeneric(
+var emptyBuf: array[1, Utf16Char]
+
+proc bindParamPtrGeneric[T: OdbcArrayType](
     stmt: SqlHandle,
     idx: TSqlUSmallInt,
-    param: openArray[OdbcArrayType],
+    param: openArray[T],
     indPtr: ptr TSqlLen,
 ) =
     const
@@ -244,7 +246,7 @@ proc bindParamPtrGeneric(
         odbcTy = toBestOdbcTy(primTy)
     let
         len = param.len
-        buf = if len == 0: nil else: param[0].unsafeAddr
+        buf = if len == 0: cast[ptr T](emptyBuf[0].addr) else: param[0].unsafeAddr
         colLen = if len == 0: 1 else: len # Workaround for bug in "SQL Server" driver
     bindParamPtr(stmt, idx, cTy, odbcTy, buf, colLen, indPtr)
 

@@ -626,6 +626,8 @@ suite "Statements that check if SQL Server data types work":
                 .firstOrDefault(OdbcValue)
             check val.kind == otDate
             check $val == "2020-03-04"
+        if conn.dbmsName != "Microsoft SQL Server":
+            skip
         doTest()
     test "time":
         proc doTest =
@@ -633,6 +635,8 @@ suite "Statements that check if SQL Server data types work":
                 .firstOrDefault(OdbcValue)
             check val.kind == otTime
             check $val == "13:32:04"
+        if conn.dbmsName != "Microsoft SQL Server":
+            skip
         doTest()
 
     test "null string produces empty string":
@@ -660,6 +664,8 @@ suite "Statements that check if SQL Server data types work":
                 .firstOrDefault(OdbcValue)
             check val.kind == otTimestamp
             check $val == "2021-10-05T13:32:04.032345600"
+        if conn.dbmsName != "Microsoft SQL Server":
+            skip
         doTest()
 
     test "Getting top results":
@@ -740,9 +746,9 @@ suite "Statements that check if SQL Server data types work":
             let param = 'b'.repeat(3500)
             discard conn.exec("insert #abc values (?)", param)
             # Check that actual number of bytes are correct
-            check conn.exec("select datalength(VeryLong) from #abc").firstOrDefault(int) == 3500
+            check conn.exec("select {fn octet_length(VeryLong)} from #abc").firstOrDefault(int) == 3500
             # Check that string doesn't have spaces in it (it should be just 'a's)
-            check conn.exec("select len(VeryLong) from #abc").firstOrDefault(int) == 3500
+            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3500
             check conn.exec("select VeryLong from #abc").firstOrDefault(string) == param
         doTest()
     test "Parameterized widestrings is written correctly to nvarchar column":
@@ -751,10 +757,10 @@ suite "Statements that check if SQL Server data types work":
             let param = 'b'.repeat(3500)
             discard conn.exec("insert #abc values (?)", param)
             # Check that actual number of bytes are correct
-            check conn.exec("select datalength(VeryLong) from #abc")
+            check conn.exec("select {fn octet_length(VeryLong)} from #abc")
                 .firstOrDefault(int) == 3500 * 2
             # Check that string doesn't have spaces in it (it should be just 'a's)
-            check conn.exec("select len(VeryLong) from #abc").firstOrDefault(int) == 3500
+            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3500
             check conn.exec("select VeryLong from #abc").firstOrDefault(string) == param
         doTest()
 
@@ -773,7 +779,7 @@ suite "Statements that check if SQL Server data types work":
             const unicode = "løæシ"
             check unicode.newWideCString.len == 4 # Sanity check
             discard conn.exec("insert #abc values (?)", unicode)
-            check conn.exec("select len(SomeCol) from #abc").firstOrDefault(int) == 4
+            check conn.exec("select {fn length(SomeCol)} from #abc").firstOrDefault(int) == 4
             check conn.exec("select SomeCol from #abc").firstOrDefault(string) == unicode
         doTest()
 
@@ -782,11 +788,11 @@ suite "Statements that check if SQL Server data types work":
             discard conn.exec"create table #abc (VeryLong varchar(max))"
 
             discard conn.exec("insert #abc values (?)", 'b'.repeat(3000))
-            check conn.exec("select datalength(VeryLong) from #abc").firstOrDefault(int) == 3000
-            check conn.exec("select len(VeryLong) from #abc").firstOrDefault(int) == 3000
+            check conn.exec("select {fn octet_length(VeryLong)} from #abc").firstOrDefault(int) == 3000
+            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3000
             discard conn.exec("update #abc set VeryLong = VeryLong + ?",
                                        'a'.repeat(1500))
-            check conn.exec("select len(VeryLong) from #abc").firstOrDefault(int) == 4500
+            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 4500
             let val = conn.exec("select VeryLong from #abc").firstOrDefault(OdbcValue)
             check val.wchars.len == 4500
         testInner()
@@ -825,18 +831,21 @@ suite "Statements that check if SQL Server data types work":
 
     test "Datetime types":
         type TestObj = object
-            someDate: string
+            someDate: OdbcDate
         proc doTest =
             block:
-                let stmt = conn.prep("select datefromparts(2020, 3, 4) as someDate")
+                let stmt = conn.prep("select {d '2020-03-04'} as someDate")
                 let rs = stmt.exec
                 check rs.next
                 var row: TestObj
                 rs.getDatas row
                 echo row.repr
-                check row.someDate == "2020-03-04"
+                check row.someDate.year == 2020
+                check row.someDate.month == 3
+                check row.someDate.day == 4
+                #== "2020-03-04"
             block:
-                let stmt = conn.prep("select datefromparts(2020, 3, 4) as someDate")
+                let stmt = conn.prep("select {d '2020-03-04'} as someDate")
                 check stmt.exec.firstOrDefault(OdbcDate) == OdbcDate(year: 2020, month: 3, day: 4)
         doTest()
 
@@ -854,11 +863,11 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
         doSetup()
     test "Number of bytes is 1 in ANSI":
         proc doTest =
-            check conn.exec("select datalength(SomeCol) from #abc").first(int) == some(1)
+            check conn.exec("select {fn octet_length(SomeCol)} from #abc").first(int) == some(1)
         doTest()
     test "Number of characters is 1 in ANSI":
         proc doTest =
-            check conn.exec("select len(SomeCol) from #abc").first(int) == some(1)
+            check conn.exec("select {fn length(SomeCol)} from #abc").first(int) == some(1)
         doTest()
 
     # NOTE: This cannot be tested for "ODBC Driver 13 for SQL Server" and
@@ -904,7 +913,7 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
 #    # Fails: Result is 2 (indicates it doesn't understand it's UTF-8)
 #    test "Number of characters is number of bytes":
 #        proc doTest =
-#            check conn.execScalar"select len(SomeCol) from #abc".toInt == 1
+#            check conn.execScalar"select {fn length(SomeCol)} from #abc".toInt == 1
 #        doTest()
 #
 #    # Succeeds
@@ -967,10 +976,10 @@ suite "Testing real database schemas":
         proc testInner =
             discard conn.exec("insert abc values (?)", 'b'.repeat(3000))
             check conn.exec("select datalength(VeryLong) from abc").firstOrDefault(int) == 3000
-            check conn.exec("select len(VeryLong) from abc").firstOrDefault(int) == 3000
+            check conn.exec("select {fn length(VeryLong)} from abc").firstOrDefault(int) == 3000
             discard conn.exec("update abc set VeryLong = VeryLong + ?",
                                        'a'.repeat(1500))
-            check conn.exec("select len(VeryLong) from abc").firstOrDefault(int) == 4500
+            check conn.exec("select {fn length(VeryLong)} from abc").firstOrDefault(int) == 4500
             let stmt = conn.prep"select VeryLong from abc"
             check stmt.exec.firstOrDefault(string).len == 4500
         testInner()
@@ -1002,7 +1011,7 @@ suite "Testing real database schemas":
                 let stmt = conn.prep("insert TwoValue (SomeName) values (?)")
                 stmt.execOnly(unicode)
             block:
-                let stmt = conn.prep("select len(SomeName) as leng from TwoValue")
+                let stmt = conn.prep("select {fn length(SomeName)} as leng from TwoValue")
                 check stmt.exec.first(int) == some(4)
             block:
                 let stmt = conn.prep("select SomeName from TwoValue")
@@ -1017,7 +1026,7 @@ suite "Testing real database schemas":
             block:
                 let stmt = conn.prep("insert TwoValue (SomeName) values (?)")
                 stmt.execOnly("Hello")
-            let stmt1 = conn.prep("select len(SomeName) as leng from TwoValue")
+            let stmt1 = conn.prep("select {fn length(SomeName)} as leng from TwoValue")
             discard stmt1.exec
             let stmt2 = conn.prep("select SomeName from TwoValue")
             discard stmt2.exec
@@ -1179,7 +1188,7 @@ suite "Testing real database schemas":
         type OdbcTables = object
             catalog: array[256, char]
             table {.odbcCol: 3.}: array[256, char]
-            ty {.odbcCol: 4.}: array[16, char] # len(LOCAL TEMPORARY) + 1
+            ty {.odbcCol: 4.}: array[16, char] # {fn length(LOCAL TEMPORARY)} + 1
 
         template cs(obj): untyped =
             $(obj[0].unsafeAddr.cstring)

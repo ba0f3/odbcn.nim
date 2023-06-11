@@ -537,12 +537,17 @@ suite "Select into typed scalar type":
             check param == ret
         doTest()
 
-static:
-    let initFile = currentSourcePath() /../ "init_databases.nim"
-    let cmd = &"nim r --cpu:{hostCPU} " & initFile & " -c \"" & connString & "\""
-    let (outp, rc) = gorgeEx cmd
-    if rc != 0:
-        macros.error "Command " & cmd & " failed with: " & outp
+proc setupDb =
+    let conn = connString.newOdbcConn
+    discard conn.exec"drop database if exists test"
+    discard conn.exec"create database test"
+    conn.setCatalog "test"
+    discard conn.exec"create table abc (VeryLong varchar(max))"
+    discard conn.exec"create table TwoValue (SomeName nvarchar(100), SomeValue int)"
+    discard conn.exec"create table HasGuid (SomeGuid uniqueidentifier)"
+    discard conn.exec"create table FixedLenTypes (SomeInt int, SomeFloat float)"
+    discard conn.exec"create table SameTypes (SomeInt1 int, SomeInt2 int)"
+setupDb()
 
 # This only checks SQL Server data types, but this should not be generic
 # enough.

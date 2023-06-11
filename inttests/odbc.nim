@@ -13,7 +13,6 @@ import std/[
     sequtils,
     encodings,
     strformat,
-    logging,
     math,
     strutils,
     enumerate,
@@ -26,7 +25,7 @@ import
 import odbcn/wrapper
 #import odbc_wrapper_nim
 
-include env_read
+import env_read
 
 proc toArray[I: static int](s: string): array[I, char] =
     assert s.len <= I

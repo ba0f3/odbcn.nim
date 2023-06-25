@@ -36,6 +36,10 @@ proc toArray[I: static int](s: string): array[I, char] =
 proc toCString[I](s: array[I, char]): cstring =
     cast[cstring](s[0].unsafeAddr)
 
+proc tdConn(c: OdbcConn) =
+    # `temptab` is a table used per test for specialized table creation.
+    discard c.exec("drop table if exists temptab")
+
 test "DSN and driver iterator finds tested DSN":
     let dsns = listDataSources().toSeq
     var dsnDriver: tuple[server, driver: string] = ("", "")
@@ -56,6 +60,8 @@ suite "Establishing connection":
     test "Connection string":
         let connString = $initConnString {"DSN": dbServer, "UID": dbUser, "PWD": dbPass}
         check not newOdbcNoConn().connect(connString).SqlHDBC.isNil
+
+let dbms = newOdbcConn(dbServer, dbUser, dbPass).dbmsName
 
 template testBothPrepNonPrep(name, templ) =
     suite "Simple `bindParams`" & name:
@@ -289,10 +295,10 @@ suite "Object/tuple typed bindParams":
     setup:
         var conn = newOdbcConn(dbServer, dbUser, dbPass)
         proc doSetup =
-            discard conn.exec "create table #abc (AnInt int, AString nvarchar(64))"
+            discard conn.exec "create table temptab (AnInt int, AString nvarchar(64))"
         doSetup()
         proc checkInsert =
-            var stmt = conn.prep("select * from #abc")
+            var stmt = conn.prep("select * from temptab")
             stmt.withExec:
                 let got1 = rs.items(TestObj).toSeq
                 check got1 == @[exp1, exp2]
@@ -300,7 +306,7 @@ suite "Object/tuple typed bindParams":
                 let got2 = rs.items((int, string)).toSeq
                 check got2 == @[(exp1.anInt, exp1.veryLong), (exp2.anInt, exp2.veryLong)]
         proc check1Insert =
-            var stmt = conn.prep("select * from #abc")
+            var stmt = conn.prep("select * from temptab")
             stmt.withExec:
                 let got1 = rs.items(TestObj).toSeq
                 check got1 == @[exp1]
@@ -308,13 +314,16 @@ suite "Object/tuple typed bindParams":
                 let got2 = rs.items((int, string)).toSeq
                 check got2 == @[(exp1.anInt, exp1.veryLong)]
 
+    teardown:
+        tdConn conn
+
     # This tests that UB does not occur in the implementation. The `string`
     # input must be converted to `seq[Utf16Char]` before being bound. If this
     # test succeeds, then the `seq[Utf16Char]` does not go out of scope before
     # the `SQLExecute`.
     test "Object with simple parameters, prep":
         proc doTest =
-            let stmt = conn.prep "insert into #abc values (?, ?)"
+            let stmt = conn.prep "insert into temptab values (?, ?)"
             stmt.execOnly exp1
             stmt.execOnly exp2
         doTest()
@@ -322,13 +331,13 @@ suite "Object/tuple typed bindParams":
 
     test "Object with simple parameters, non-prep":
         proc doTest =
-            let stmt = conn.exec("insert into #abc values (?, ?)", exp1)
+            let stmt = conn.exec("insert into temptab values (?, ?)", exp1)
         doTest()
         check1Insert()
 
     test "Object with same-ordered named parameters, prep":
         proc doTest =
-            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            let stmt = conn.prep "insert into temptab values (?anInt, ?veryLong)"
             stmt.execOnly exp1
             stmt.execOnly exp2
         doTest()
@@ -336,14 +345,14 @@ suite "Object/tuple typed bindParams":
 
     test "Object with same-ordered named parameters, non-prep":
         proc doTest =
-            discard conn.exec("insert into #abc values (?anInt, ?veryLong)", exp1)
+            discard conn.exec("insert into temptab values (?anInt, ?veryLong)", exp1)
         doTest()
         check1Insert()
 
     # Tests that fields in object is matched correctly
     test "Object with reverse-ordered named parameters, prep":
         proc doTest =
-            let stmt = conn.prep "insert into #abc (AString, AnInt) values (?veryLong, ?anInt)"
+            let stmt = conn.prep "insert into temptab (AString, AnInt) values (?veryLong, ?anInt)"
             stmt.execOnly exp1
             stmt.execOnly exp2
         doTest()
@@ -352,7 +361,7 @@ suite "Object/tuple typed bindParams":
     # Tests that fields in object is matched correctly
     test "Object with reverse-ordered named parameters, non-prep":
         proc doTest =
-            discard conn.exec("insert into #abc (AString, AnInt) values (?veryLong, ?anInt)", exp1)
+            discard conn.exec("insert into temptab (AString, AnInt) values (?veryLong, ?anInt)", exp1)
         doTest()
         check1Insert()
 
@@ -368,7 +377,7 @@ suite "Object/tuple typed bindParams":
 
     test "Tuple; prep":
         proc doTest =
-            let stmt = conn.prep "insert into #abc values (?, ?)"
+            let stmt = conn.prep "insert into temptab values (?, ?)"
             let
                 tup1 = (exp1.anInt, exp1.veryLong)
                 tup2 = (exp2.anInt, exp2.veryLong)
@@ -380,7 +389,7 @@ suite "Object/tuple typed bindParams":
     test "Tuple; non-prep":
         proc doTest =
             let tup = (exp1.anInt, exp1.veryLong)
-            discard conn.exec("insert into #abc values (?, ?)", tup)
+            discard conn.exec("insert into temptab values (?, ?)", tup)
         doTest()
         check1Insert()
 
@@ -392,7 +401,7 @@ suite "Object/tuple typed bindParams":
             tst1 = TestObj2(anInt: exp1.anInt, twoInt: 4, aStr: exp1.veryLong)
             tst2 = TestObj2(anInt: exp2.anInt, twoInt: 3, aStr: exp2.veryLong)
         proc doTest =
-            let stmt = conn.prep "insert into #abc values (?anInt, ?aStr)"
+            let stmt = conn.prep "insert into temptab values (?anInt, ?aStr)"
             stmt.execOnly tst1
             stmt.execOnly tst2
         doTest()
@@ -404,13 +413,13 @@ suite "Object/tuple typed bindParams":
             aStr: string
         let tst = TestObj2(anInt: exp1.anInt, twoInt: 4, aStr: exp1.veryLong)
         proc doTest =
-            discard conn.exec("insert into #abc values (?anInt, ?aStr)", tst)
+            discard conn.exec("insert into temptab values (?anInt, ?aStr)", tst)
         doTest()
         check1Insert()
 
     test "Individual values; prep":
         proc doTest =
-            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            let stmt = conn.prep "insert into temptab values (?anInt, ?veryLong)"
             stmt.execOnly(anInt = exp1.anInt, veryLong = exp1.veryLong)
             stmt.execOnly(anInt = exp2.anInt, veryLong = exp2.veryLong)
         doTest()
@@ -418,7 +427,7 @@ suite "Object/tuple typed bindParams":
 
     test "Individual values; non-prep":
         proc doTest =
-            discard conn.exec("insert into #abc values (?anInt, ?veryLong)",
+            discard conn.exec("insert into temptab values (?anInt, ?veryLong)",
                 anInt = exp1.anInt, veryLong = exp1.veryLong)
         doTest()
         check1Insert()
@@ -445,15 +454,18 @@ suite "Object/tuple typed getDatas":
     setup:
         var conn = newOdbcConn(dbServer, dbUser, dbPass)
         proc doSetup =
-            discard conn.exec "create table #abc (AnInt int, AString nvarchar(64))"
-            let stmt = conn.prep "insert into #abc values (?anInt, ?veryLong)"
+            discard conn.exec "create table temptab (AnInt int, AString nvarchar(64))"
+            let stmt = conn.prep "insert into temptab values (?anInt, ?veryLong)"
             stmt.execOnly exp1
             stmt.execOnly exp2
         doSetup()
 
+    teardown:
+        tdConn conn
+
     test "Manual `next` works":
         proc testInner =
-            let rs = conn.exec "select * from #abc"
+            let rs = conn.exec "select * from temptab"
             var row: TestObj
             check rs.next row
             check row == exp1
@@ -464,14 +476,14 @@ suite "Object/tuple typed getDatas":
 
     test "Iterator works":
         proc doTest =
-            let rs = conn.exec "select * from #abc"
+            let rs = conn.exec "select * from temptab"
             let got = rs.items(TestObj).toSeq
             check got == @[exp1, exp2]
         doTest()
 
     test "Tuple works":
         proc doTest =
-            let rs = conn.exec "select * from #abc"
+            let rs = conn.exec "select * from temptab"
             let got = rs.items((int, string)).toSeq
             check got == @[(exp1.anInt, exp1.veryLong), (exp2.anInt, exp2.veryLong)]
         doTest()
@@ -480,40 +492,52 @@ suite "Select into typed scalar type":
     setup:
         var conn = newOdbcConn(dbServer, dbUser, dbPass)
 
+    teardown:
+        tdConn conn
+
     test "string":
         proc doTest =
-            discard conn.exec "create table #abc (AStr nvarchar(20))"
-            discard conn.exec "insert #abc values (N'Hey')"
-            let got = conn.exec("select * from #abc").items(string).toSeq
+            discard conn.exec "create table temptab (AStr nvarchar(20))"
+            discard conn.exec "insert into temptab values (N'Hey')"
+            let got = conn.exec("select * from temptab").items(string).toSeq
             check got == @["Hey"]
-        doTest()
+        if dbms == "SQLite":
+            skip
+        else:
+            doTest()
 
     test "int":
         proc doTest =
-            discard conn.exec "create table #abc (AStr int)"
-            discard conn.exec "insert #abc values (42)"
-            let got = conn.exec("select * from #abc").items(int).toSeq
+            discard conn.exec "create table temptab (AStr int)"
+            discard conn.exec "insert into temptab values (42)"
+            let got = conn.exec("select * from temptab").items(int).toSeq
             check got == @[42]
         doTest()
 
     test "many strings":
         proc doTest =
-            discard conn.exec "create table #abc (AStr nvarchar(32))"
-            discard conn.exec "insert #abc values (N'Hey')"
-            discard conn.exec "insert #abc values (N'ø')"
-            let got = conn.exec("select * from #abc").items(string).toSeq
-            check got == @["Hey", "ø"]
-        doTest()
+            discard conn.exec "create table temptab (AStr nvarchar(32))"
+            discard conn.exec "insert into temptab values (N'Hey')"
+            discard conn.exec "insert into temptab values (N'ą')"
+            let got = conn.exec("select * from temptab").items(string).toSeq
+            check got == @["Hey", "ą"]
+        if dbms == "SQLite":
+            skip
+        else:
+            doTest()
 
     test "Tuple":
         proc doTest =
-            discard conn.exec "create table #abc (AStr nvarchar(32), AInt int)"
-            discard conn.exec "insert #abc values (N'Hey', 42)"
-            discard conn.exec "insert #abc values (N'ø', 64)"
-            let got = conn.exec("select * from #abc").items((string, int)).toSeq
+            discard conn.exec "create table temptab (AStr nvarchar(32), AInt int)"
+            discard conn.exec "insert into temptab values (N'Hey', 42)"
+            discard conn.exec "insert into temptab values (N'ø', 64)"
+            let got = conn.exec("select * from temptab").items((string, int)).toSeq
             check got == @[("Hey", 42), ("ø", 64)]
             check got[0].type is (string, int)
-        doTest()
+        if dbms == "SQLite": # SQLite doesn't support N
+            skip
+        else:
+            doTest()
 
     test "Optional some":
         proc doTest =
@@ -538,10 +562,20 @@ suite "Select into typed scalar type":
 
 proc setupDb =
     let conn = connString.newOdbcConn
-    discard conn.exec"drop database if exists test"
-    discard conn.exec"create database test"
-    conn.setCatalog "test"
-    discard conn.exec"create table abc (VeryLong varchar(max))"
+    if dbms == "SQLite":
+        for tab in conn.exec("select name from sqlite_master where type = 'table'").items(string):
+            discard conn.exec("drop table " & tab)
+        #discardResults conn.exec"pragma writable_schema = 1"
+        #discardResults conn.exec"delete from sqlite_master"
+        #discardResults conn.exec"pragma writable_schema = 0"
+        #discardResults conn.exec"vacuum"
+        #discardResults conn.exec"pragma integrity_check"
+        discard conn.exec"create table abc (VeryLong text)"
+    else:
+        discard conn.exec"drop database if exists test"
+        discard conn.exec"create database test"
+        conn.setCatalog "test"
+        discard conn.exec"create table abc (VeryLong varchar(max))"
     discard conn.exec"create table TwoValue (SomeName nvarchar(100), SomeValue int)"
     discard conn.exec"create table HasGuid (SomeGuid uniqueidentifier)"
     discard conn.exec"create table FixedLenTypes (SomeInt int, SomeFloat float)"
@@ -550,338 +584,341 @@ setupDb()
 
 # This only checks SQL Server data types, but this should not be generic
 # enough.
-suite "Statements that check if SQL Server data types work":
-    setup:
-        var conn = newOdbcConn(dbServer, dbUser, dbPass)
+if dbms != "SQLite":
+    suite "Statements that check if SQL Server data types work":
+        setup:
+            var conn = newOdbcConn(dbServer, dbUser, dbPass)
 
-    test "integer":
-        proc doTest =
-            let val = conn.exec("select 3").firstOrDefault(OdbcValue)
-            check val.kind == otInt32
-            check val.i64 == 3
-        doTest()
-    test "smallint":
-        proc doTest =
-            let val = conn.exec("select cast(2 as smallint)").firstOrDefault(OdbcValue)
-            check val.kind == otInt16
-            check val.i64 == 2
-        doTest()
-    test "tinyint":
-        proc doTest =
-            let val = conn.exec("select cast(5 as tinyint)").firstOrDefault(OdbcValue)
-            check val.kind == otInt8
-            check val.i64 == 5
-        doTest()
-    test "bit":
-        proc doTest =
-            let val = conn.exec("select cast(1 as bit)").firstOrDefault(OdbcValue)
-            check val.kind == otBool
-            check val.i64 == 1
-        doTest()
-    test "bigint":
-        proc doTest =
-            let val = conn.exec("select cast(5000000000 as bigint)").firstOrDefault(OdbcValue)
-            check val.kind == otInt64
-            check val.i64 == 5_000_000_000
-        doTest()
+        teardown:
+            tdConn conn
 
-    test "float32":
-        proc doTest =
-            let val = conn.exec("select cast(345.32 as real)").firstOrDefault(OdbcValue)
-            check val.kind == otFloat32
-            check almostEqual(val.f32, 345.32)
-        doTest()
+        test "integer":
+            proc doTest =
+                let val = conn.exec("select 3").firstOrDefault(OdbcValue)
+                check val.kind == otInt32
+                check val.i64 == 3
+            doTest()
+        test "smallint":
+            proc doTest =
+                let val = conn.exec("select cast(2 as smallint)").firstOrDefault(OdbcValue)
+                check val.kind == otInt16
+                check val.i64 == 2
+            doTest()
+        test "tinyint":
+            proc doTest =
+                let val = conn.exec("select cast(5 as tinyint)").firstOrDefault(OdbcValue)
+                check val.kind == otInt8
+                check val.i64 == 5
+            doTest()
+        test "bit":
+            proc doTest =
+                let val = conn.exec("select cast(1 as bit)").firstOrDefault(OdbcValue)
+                check val.kind == otBool
+                check val.i64 == 1
+            doTest()
+        test "bigint":
+            proc doTest =
+                let val = conn.exec("select cast(5000000000 as bigint)").firstOrDefault(OdbcValue)
+                check val.kind == otInt64
+                check val.i64 == 5_000_000_000
+            doTest()
 
-    test "float64":
-        proc doTest =
-            let val = conn.exec("select cast(3124.32 as double precision)")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otFloat64
-            check almostEqual(val.f64, 3124.32)
-        doTest()
-    test "string":
-        proc doTest =
-            let val = conn.exec("select 'Hey'").firstOrDefault(OdbcValue)
-            check val.kind == otWideArray
-            check val.wchars.len == 3
-            check $val == "Hey"
-        doTest()
-    test "widestring":
-        proc doTest =
-            let val = conn.exec("select N'Hey'").firstOrDefault(OdbcValue)
-            check val.kind == otWideArray
-            check $val == "Hey"
-        doTest()
-    test "binary":
-        proc doTest =
-            let val = conn.exec("select cast(123456 as binary(4))")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otByteArray
-            check val.bytes == @[0x00'u8, 0x01, 0xe2, 0x40]
-            check $val == "0001E240"
-        doTest()
-    test "date":
-        proc doTest =
-            let val = conn.exec("select datefromparts(2020, 3, 4)")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otDate
-            check $val == "2020-03-04"
-        if conn.dbmsName != "Microsoft SQL Server":
-            skip
-        doTest()
-    test "time":
-        proc doTest =
-            let val = conn.exec("select timefromparts(13, 32, 4, 321, 4)")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otTime
-            check $val == "13:32:04"
-        if conn.dbmsName != "Microsoft SQL Server":
-            skip
-        doTest()
+        test "float32":
+            proc doTest =
+                let val = conn.exec("select cast(345.32 as real)").firstOrDefault(OdbcValue)
+                check val.kind == otFloat32
+                check almostEqual(val.f32, 345.32)
+            doTest()
 
-    test "null string produces empty string":
-        proc doTest =
-            let val = conn.exec("select cast(null as varchar(5))").firstOrDefault(OdbcValue)
-            check val.kind == otWideArray
-            check $val == ""
-        doTest()
+        test "float64":
+            proc doTest =
+                let val = conn.exec("select cast(3124.32 as double precision)")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otFloat64
+                check almostEqual(val.f64, 3124.32)
+            doTest()
+        test "string":
+            proc doTest =
+                let val = conn.exec("select 'Hey'").firstOrDefault(OdbcValue)
+                check val.kind == otWideArray
+                check val.wchars.len == 3
+                check $val == "Hey"
+            doTest()
+        test "widestring":
+            proc doTest =
+                let val = conn.exec("select N'Hey'").firstOrDefault(OdbcValue)
+                check val.kind == otWideArray
+                check $val == "Hey"
+            doTest()
+        test "binary":
+            proc doTest =
+                let val = conn.exec("select cast(123456 as binary(4))")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otByteArray
+                check val.bytes == @[0x00'u8, 0x01, 0xe2, 0x40]
+                check $val == "0001E240"
+            doTest()
+        test "date":
+            proc doTest =
+                let val = conn.exec("select datefromparts(2020, 3, 4)")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otDate
+                check $val == "2020-03-04"
+            doTest()
+        test "time":
+            proc doTest =
+                let val = conn.exec("select timefromparts(13, 32, 4, 321, 4)")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otTime
+                check $val == "13:32:04"
+            doTest()
 
-    # NOTE: Non-zero milliseconds cause rounding which makes a `check`
-    # unfeasible. This is likely fine in normal scenarios as the `datetime`
-    # type is stored in SQL Server as floating point anyway. Use `datetime2`
-    # or a float-based datetime instead.
-    test "Simple timestamp select":
-        proc doTest =
-            let val = conn.exec("select datetimefromparts(2021, 10, 5, 13, 32, 4, 0)")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otTimestamp
-            check $val == "2021-10-05T13:32:04.000000000"
-        doTest()
+        test "null string produces empty string":
+            proc doTest =
+                let val = conn.exec("select cast(null as varchar(5))").firstOrDefault(OdbcValue)
+                check val.kind == otWideArray
+                check $val == ""
+            doTest()
 
-    test "Simple timestamp2 select":
-        proc doTest =
-            let val = conn.exec("select datetime2fromparts(2021, 10, 5, 13, 32, 4, 323456, 7)")
-                .firstOrDefault(OdbcValue)
-            check val.kind == otTimestamp
-            check $val == "2021-10-05T13:32:04.032345600"
-        if conn.dbmsName != "Microsoft SQL Server":
-            skip
-        doTest()
+        # NOTE: Non-zero milliseconds cause rounding which makes a `check`
+        # unfeasible. This is likely fine in normal scenarios as the `datetime`
+        # type is stored in SQL Server as floating point anyway. Use `datetime2`
+        # or a float-based datetime instead.
+        test "Simple timestamp select":
+            proc doTest =
+                let val = conn.exec("select datetimefromparts(2021, 10, 5, 13, 32, 4, 0)")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otTimestamp
+                check $val == "2021-10-05T13:32:04.000000000"
+            doTest()
 
-    test "Getting top results":
-        proc doTest =
-            let ds = conn.exec("select top 2 * from sys.types")
-            var row: OdbcRowSet
-            check ds.next(row) == true
-            check ds.next(row) == true
-            check ds.next(row) == false
-        doTest()
+        test "Simple timestamp2 select":
+            proc doTest =
+                let val = conn.exec("select datetime2fromparts(2021, 10, 5, 13, 32, 4, 323456, 7)")
+                    .firstOrDefault(OdbcValue)
+                check val.kind == otTimestamp
+                check $val == "2021-10-05T13:32:04.032345600"
+            doTest()
 
-    test "Get current catalog":
-        check conn.dbmsName != "Microsoft SQL Server" or conn.catalog == "master"
+        test "Getting top results":
+            proc doTest =
+                let ds = conn.exec("select top 2 * from sys.types")
+                var row: OdbcRowSet
+                check ds.next(row) == true
+                check ds.next(row) == true
+                check ds.next(row) == false
+            doTest()
 
-    test "Dump basic info":
-        echo "driver odbc ver ", conn.driverOdbcVersion
-        echo "driver ver ", conn.driverVersion
-        echo "driver name ", conn.driverName
-        echo "dbms name ", conn.dbmsName
-        echo "dbms ver ", conn.dbmsVersion
-        echo "server name ", conn.serverName
-        echo "user name ", conn.userName
+        test "Get current catalog":
+            check conn.dbmsName != "Microsoft SQL Server" or conn.catalog == "master"
 
-    test "Parameterized simple query":
-        proc doTest =
-            let ds = conn.exec("select ?", 3)
-            var row: OdbcRowSet
-            check ds.next(row)
-            check hostCPU != "amd64" or row[0].kind == otInt64
-            check hostCPU != "i386" or row[0].kind == otInt32
-            check row[0].i64 == 3
-            check not ds.next(row)
-        doTest()
+        test "Dump basic info":
+            echo "driver odbc ver ", conn.driverOdbcVersion
+            echo "driver ver ", conn.driverVersion
+            echo "driver name ", conn.driverName
+            echo "dbms name ", conn.dbmsName
+            echo "dbms ver ", conn.dbmsVersion
+            echo "server name ", conn.serverName
+            echo "user name ", conn.userName
 
-    test "Repeated parameterized query":
-        proc testInner =
-            var
-                qry = conn.prep("select ?")
-                row: OdbcRowSet
-            for i in 2..5:
-                let ds = qry.exec(i)
+        test "Parameterized simple query":
+            proc doTest =
+                let ds = conn.exec("select ?", 3)
+                var row: OdbcRowSet
                 check ds.next(row)
-                check row[0].i64 == i
+                check hostCPU != "amd64" or row[0].kind == otInt64
+                check hostCPU != "i386" or row[0].kind == otInt32
+                check row[0].i64 == 3
                 check not ds.next(row)
-                qry = ds.unbind
-        testInner()
+            doTest()
 
-    test "Repeated parameterized query with withExec":
-        proc testInner =
-            var
-                qry = conn.prep("select ?")
-                row: OdbcRowSet
-            for i in 2..5:
-                qry.withExec(i):
-                    check rs.next(row) == true
+        test "Repeated parameterized query":
+            proc testInner =
+                var
+                    qry = conn.prep("select ?")
+                    row: OdbcRowSet
+                for i in 2..5:
+                    let ds = qry.exec(i)
+                    check ds.next(row)
                     check row[0].i64 == i
-                    check rs.next(row) == false
-        testInner()
+                    check not ds.next(row)
+                    qry = ds.unbind
+            testInner()
 
-    test "Repeated parameterized query with withExec with no params":
-        proc testInner =
-            var
-                qry = conn.prep("select 1")
-                row: OdbcRowSet
-            qry.withExec:
-                check rs.next(row) == true
-                check row[0].i64 == 1
-                check rs.next == false
-            qry.withExec:
-                check rs.next(row) == true
-                check row[0].i64 == 1
-                check rs.next == false
-        testInner()
+        test "Repeated parameterized query with withExec":
+            proc testInner =
+                var
+                    qry = conn.prep("select ?")
+                    row: OdbcRowSet
+                for i in 2..5:
+                    qry.withExec(i):
+                        check rs.next(row) == true
+                        check row[0].i64 == i
+                        check rs.next(row) == false
+            testInner()
 
-    test "Parameterized widestring is written correctly to varchar column":
-        proc doTest =
-            discard conn.exec"create table #abc (VeryLong varchar(max))"
-            let param = 'b'.repeat(3500)
-            discard conn.exec("insert #abc values (?)", param)
-            # Check that actual number of bytes are correct
-            check conn.exec("select {fn octet_length(VeryLong)} from #abc").firstOrDefault(int) == 3500
-            # Check that string doesn't have spaces in it (it should be just 'a's)
-            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3500
-            check conn.exec("select VeryLong from #abc").firstOrDefault(string) == param
-        doTest()
-    test "Parameterized widestrings is written correctly to nvarchar column":
-        proc doTest =
-            discard conn.exec"create table #abc (VeryLong nvarchar(max))"
-            let param = 'b'.repeat(3500)
-            discard conn.exec("insert #abc values (?)", param)
-            # Check that actual number of bytes are correct
-            check conn.exec("select {fn octet_length(VeryLong)} from #abc")
-                .firstOrDefault(int) == 3500 * 2
-            # Check that string doesn't have spaces in it (it should be just 'a's)
-            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3500
-            check conn.exec("select VeryLong from #abc").firstOrDefault(string) == param
-        doTest()
+        test "Repeated parameterized query with withExec with no params":
+            proc testInner =
+                var
+                    qry = conn.prep("select 1")
+                    row: OdbcRowSet
+                qry.withExec:
+                    check rs.next(row) == true
+                    check row[0].i64 == 1
+                    check rs.next == false
+                qry.withExec:
+                    check rs.next(row) == true
+                    check row[0].i64 == 1
+                    check rs.next == false
+            testInner()
 
-    test "Parameterized empty string":
-        proc doTest =
-            let ret = conn.exec("select ?", "").first(OdbcValue).get
-            echo ret.repr
-            check $ret == ""
-        doTest()
+        test "Parameterized widestring is written correctly to varchar column":
+            proc doTest =
+                discard conn.exec"create table temptab (VeryLong varchar(max))"
+                let param = 'b'.repeat(3500)
+                discard conn.exec("insert into temptab values (?)", param)
+                # Check that actual number of bytes are correct
+                check conn.exec("select {fn octet_length(VeryLong)} from temptab").firstOrDefault(int) == 3500
+                # Check that string doesn't have spaces in it (it should be just 'a's)
+                check conn.exec("select {fn length(VeryLong)} from temptab").firstOrDefault(int) == 3500
+                check conn.exec("select VeryLong from temptab").firstOrDefault(string) == param
+            doTest()
+        test "Parameterized widestrings is written correctly to nvarchar column":
+            proc doTest =
+                discard conn.exec"create table temptab (VeryLong nvarchar(max))"
+                let param = 'b'.repeat(3500)
+                discard conn.exec("insert into temptab values (?)", param)
+                # Check that actual number of bytes are correct
+                check conn.exec("select {fn octet_length(VeryLong)} from temptab")
+                    .firstOrDefault(int) == 3500 * 2
+                # Check that string doesn't have spaces in it (it should be just 'a's)
+                check conn.exec("select {fn length(VeryLong)} from temptab").firstOrDefault(int) == 3500
+                check conn.exec("select VeryLong from temptab").firstOrDefault(string) == param
+            doTest()
 
-    test "Unicode characters are inserted correctly":
-        proc doTest =
-            discard conn.exec"create table #abc (SomeCol nvarchar(max))"
-            # æ is 1 byte ANSI / 2 byte UTF-8/16
-            # シ is 2 byte UTF-16 / 3 byte UTF-8
-            const unicode = "løæシ"
-            check unicode.newWideCString.len == 4 # Sanity check
-            discard conn.exec("insert #abc values (?)", unicode)
-            check conn.exec("select {fn length(SomeCol)} from #abc").firstOrDefault(int) == 4
-            check conn.exec("select SomeCol from #abc").firstOrDefault(string) == unicode
-        doTest()
+        test "Parameterized empty string":
+            proc doTest =
+                let ret = conn.exec("select ?", "").first(OdbcValue).get
+                echo ret.repr
+                check $ret == ""
+            doTest()
 
-    test "Variable sized data":
-        proc testInner =
-            discard conn.exec"create table #abc (VeryLong varchar(max))"
+        test "Unicode characters are inserted correctly":
+            proc doTest =
+                discard conn.exec"create table temptab (SomeCol nvarchar(max))"
+                # æ is 1 byte ANSI / 2 byte UTF-8/16
+                # シ is 2 byte UTF-16 / 3 byte UTF-8
+                const unicode = "løæシ"
+                check unicode.newWideCString.len == 4 # Sanity check
+                discard conn.exec("insert into temptab values (?)", unicode)
+                check conn.exec("select {fn length(SomeCol)} from temptab").firstOrDefault(int) == 4
+                check conn.exec("select SomeCol from temptab").firstOrDefault(string) == unicode
+            doTest()
 
-            discard conn.exec("insert #abc values (?)", 'b'.repeat(3000))
-            check conn.exec("select {fn octet_length(VeryLong)} from #abc").firstOrDefault(int) == 3000
-            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 3000
-            discard conn.exec("update #abc set VeryLong = VeryLong + ?",
-                                       'a'.repeat(1500))
-            check conn.exec("select {fn length(VeryLong)} from #abc").firstOrDefault(int) == 4500
-            let val = conn.exec("select VeryLong from #abc").firstOrDefault(OdbcValue)
-            check val.wchars.len == 4500
-        testInner()
+        test "Variable sized data":
+            proc testInner =
+                discard conn.exec"create table temptab (VeryLong varchar(max))"
 
-    test "Transactions":
-        proc doTest =
-            check not conn.inTran
-            discard conn.exec"create table #abc (SomeCol nvarchar(max))"
-            conn.beginTran
-            discard conn.exec("insert #abc values (?)", "hey")
-            discard conn.exec("update #abc set SomeCol = ?", "no")
-            conn.commitTran
-            check conn.exec("select SomeCol from #abc").first(string) == some("no")
-            check not conn.inTran
-        doTest()
+                discard conn.exec("insert into temptab values (?)", 'b'.repeat(3000))
+                check conn.exec("select {fn octet_length(VeryLong)} from temptab").firstOrDefault(int) == 3000
+                check conn.exec("select {fn length(VeryLong)} from temptab").firstOrDefault(int) == 3000
+                discard conn.exec("update temptab set VeryLong = VeryLong + ?",
+                                           'a'.repeat(1500))
+                check conn.exec("select {fn length(VeryLong)} from temptab").firstOrDefault(int) == 4500
+                let val = conn.exec("select VeryLong from temptab").firstOrDefault(OdbcValue)
+                check val.wchars.len == 4500
+            testInner()
 
-    test "Executing, then unbinding and executing prepared statements works":
-        proc doTest =
-            var stmt = conn.prep"select * from sys.tables"
-            var ds = stmt.exec
-            check ds.next
-            stmt = ds.unbind
-            ds = stmt.exec
-            check ds.next
-        doTest()
+        test "Transactions":
+            proc doTest =
+                check not conn.inTran
+                discard conn.exec"create table temptab (SomeCol nvarchar(max))"
+                conn.beginTran
+                discard conn.exec("insert into temptab values (?)", "hey")
+                discard conn.exec("update temptab set SomeCol = ?", "no")
+                conn.commitTran
+                check conn.exec("select SomeCol from temptab").first(string) == some("no")
+                check not conn.inTran
+            doTest()
 
-    # Specific to SQL Server
-    test "Money types":
-        proc doTest =
-            discard conn.exec"create table #abc (Cash money)"
-            discard conn.exec"insert #abc values (32.43)"
-            let val = conn.exec("select * from #abc").firstOrDefault(OdbcValue)
-            check val.kind == otCharArray
-            check $val == "32.4300"
-        doTest()
+        test "Executing, then unbinding and executing prepared statements works":
+            proc doTest =
+                var stmt = conn.prep"select * from sys.tables"
+                var ds = stmt.exec
+                check ds.next
+                stmt = ds.unbind
+                ds = stmt.exec
+                check ds.next
+            doTest()
 
-    test "Datetime types":
-        type TestObj = object
-            someDate: OdbcDate
-        proc doTest =
-            block:
-                let stmt = conn.prep("select {d '2020-03-04'} as someDate")
-                let rs = stmt.exec
-                check rs.next
-                var row: TestObj
-                rs.getDatas row
-                echo row.repr
-                check row.someDate.year == 2020
-                check row.someDate.month == 3
-                check row.someDate.day == 4
-                #== "2020-03-04"
-            block:
-                let stmt = conn.prep("select {d '2020-03-04'} as someDate")
-                check stmt.exec.firstOrDefault(OdbcDate) == OdbcDate(year: 2020, month: 3, day: 4)
-        doTest()
+        # Specific to SQL Server
+        test "Money types":
+            proc doTest =
+                discard conn.exec"create table temptab (Cash money)"
+                discard conn.exec"insert into temptab values (32.43)"
+                let val = conn.exec("select * from temptab").firstOrDefault(OdbcValue)
+                check val.kind == otCharArray
+                check $val == "32.4300"
+            doTest()
 
-suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
-    setup:
-        var conn = newOdbcConn(dbServer, dbUser, dbPass)
-        let utf8Str = "ø"
-        require utf8Str.len == 2
-        let ansiStr = utf8Str.convert("CP1252", "UTF-8")
-        require ansiStr.len == 1
-        let collate = "latin1_general_100_ci_as_sc"
-        proc doSetup =
-            discard conn.exec "create table #abc (SomeCol varchar(max) collate " & collate & ")"
-            discard conn.exec("insert #abc values (?)", utf8Str)
-        doSetup()
-    test "Number of bytes is 1 in ANSI":
-        proc doTest =
-            check conn.exec("select {fn octet_length(SomeCol)} from #abc").first(int) == some(1)
-        doTest()
-    test "Number of characters is 1 in ANSI":
-        proc doTest =
-            check conn.exec("select {fn length(SomeCol)} from #abc").first(int) == some(1)
-        doTest()
+        test "Datetime types":
+            type TestObj = object
+                someDate: OdbcDate
+            proc doTest =
+                block:
+                    let stmt = conn.prep("select {d '2020-03-04'} as someDate")
+                    let rs = stmt.exec
+                    check rs.next
+                    var row: TestObj
+                    rs.getDatas row
+                    echo row.repr
+                    check row.someDate.year == 2020
+                    check row.someDate.month == 3
+                    check row.someDate.day == 4
+                block:
+                    let stmt = conn.prep("select {d '2020-03-04'} as someDate")
+                    check stmt.exec.firstOrDefault(OdbcDate) == OdbcDate(year: 2020, month: 3, day: 4)
+            doTest()
 
-    # NOTE: This cannot be tested for "ODBC Driver 13 for SQL Server" and
-    # newer for Linux, because encoding for getting data is always UTF-8.
-    # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/programming-guidelines?view=sql-server-ver16#character-set-support
-    #test "Binary representation is in ANSI":
-    #    proc doTest =
-    #        check conn.exec("select SomeCol from #abc")
-    #            .first(seq[char]) == some(ansiStr.toSeq)
-    #    doTest()
-    test "String representation is in UTF-8":
-        proc doTest =
-            check conn.exec("select SomeCol from #abc").first(string) == some(utf8Str)
-        doTest()
+    # sqlite always stores utf-8
+    suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
+        setup:
+            var conn = newOdbcConn(dbServer, dbUser, dbPass)
+            let utf8Str = "ø"
+            require utf8Str.len == 2
+            let ansiStr = utf8Str.convert("CP1252", "UTF-8")
+            require ansiStr.len == 1
+            let collate = "latin1_general_100_ci_as_sc"
+            proc doSetup =
+                discard conn.exec "create table temptab (SomeCol varchar(max) collate " & collate & ")"
+                discard conn.exec("insert into temptab values (?)", utf8Str)
+            doSetup()
+    
+        teardown:
+            tdConn conn
+    
+        test "Number of bytes is 1 in ANSI":
+            proc doTest =
+                check conn.exec("select {fn octet_length(SomeCol)} from temptab").first(int) == some(1)
+            doTest()
+    
+        test "Number of characters is 1 in ANSI":
+            proc doTest =
+                check conn.exec("select {fn length(SomeCol)} from temptab").first(int) == some(1)
+            doTest()
+    
+        # NOTE: This cannot be tested for "ODBC Driver 13 for SQL Server" and
+        # newer for Linux, because encoding for getting data is always UTF-8.
+        # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/programming-guidelines?view=sql-server-ver16#character-set-support
+        #test "Binary representation is in ANSI":
+        #    proc doTest =
+        #        check conn.exec("select SomeCol from temptab")
+        #            .first(seq[char]) == some(ansiStr.toSeq)
+        #    doTest()
+        test "String representation is in UTF-8":
+            proc doTest =
+                check conn.exec("select SomeCol from temptab").first(string) == some(utf8Str)
+            doTest()
 
 # NOTE: A UTF-8 collation does NOT change how string data is sent. It must
 # still be converted to UTF-16, sent over ODBC API, and then converted back
@@ -900,20 +937,20 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
 #            discard conn.exec "drop database if exists utf8test"
 #            discard conn.exec "create database utf8test collate latin1_general_100_ci_as_sc_UTF8"
 #            conn.setCatalog "utf8Test"
-#            discard conn.exec "create table #abc (SomeCol varchar(max))"
-#            discard conn.exec("insert #abc values (?)", utf8Str)
+#            discard conn.exec "create table temptab (SomeCol varchar(max))"
+#            discard conn.exec("insert temptab values (?)", utf8Str)
 #        doSetup()
 #
 #    # Succeeds
 #    test "Number of bytes takes 2-byte UTF-8 into account":
 #        proc doTest =
-#            check conn.execScalar"select datalength(SomeCol) from #abc".toInt == 2
+#            check conn.execScalar"select {fn octet_length(SomeCol)} from temptab".toInt == 2
 #        doTest()
 #
 #    # Fails: Result is 2 (indicates it doesn't understand it's UTF-8)
 #    test "Number of characters is number of bytes":
 #        proc doTest =
-#            check conn.execScalar"select {fn length(SomeCol)} from #abc".toInt == 1
+#            check conn.execScalar"select {fn length(SomeCol)} from temptab".toInt == 1
 #        doTest()
 #
 #    # Succeeds
@@ -922,7 +959,7 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
 #            block:
 #                type BinaryStr = object
 #                    someCol: seq[byte]
-#                let rs = conn.exec("select SomeCol from #abc")
+#                let rs = conn.exec("select SomeCol from temptab")
 #                check rs.items(BinaryStr).toSeq == @[BinaryStr(someCol: utf8Str)]
 #        doTest()
 #
@@ -930,15 +967,16 @@ suite "UTF-8 string with ANSI equivalent is stored as ANSI in varchar":
 #    # data is in some other encoding
 #    test "String representation is correct UTF-8":
 #        proc doTest =
-#            echo ($conn.execScalar"select SomeCol from #abc").repr
-#            check $conn.execScalar"select SomeCol from #abc" == "ø"
+#            echo ($conn.execScalar"select SomeCol from temptab").repr
+#            check $conn.execScalar"select SomeCol from temptab" == "ø"
 #        doTest()
 
 proc setupTestConn: OdbcConn =
     var noConn = newOdbcNoConn()
-    noConn.setCatalog "test"
     var conn = noConn.connect(dbServer, dbUser, dbPass)
-    require conn.catalog == "test"
+    if dbms != "SQLite":
+        conn.setCatalog "test"
+        require conn.catalog == "test"
     discard conn.exec"delete from abc"
     discard conn.exec"delete from TwoValue"
     discard conn.exec"delete from HasGuid"
@@ -950,10 +988,13 @@ suite "Testing real database schemas":
     setup:
         var conn = setupTestConn()
 
+    teardown:
+        tdConn conn
+
     test "Binding columns with compile-time helper":
         proc testInner =
             block:
-                let stmt = conn.prep("insert FixedLenTypes values (?, ?)")
+                let stmt = conn.prep("insert into FixedLenTypes values (?, ?)")
                 stmt.execOnly(4, 5.67890123456)
                 stmt.execOnly(5, 3.45678901234)
             let stmt = conn.prep("select * from FixedLenTypes")
@@ -974,10 +1015,16 @@ suite "Testing real database schemas":
 
     test "Compile-time query for variable sized data":
         proc testInner =
-            discard conn.exec("insert abc values (?)", 'b'.repeat(3000))
-            check conn.exec("select datalength(VeryLong) from abc").firstOrDefault(int) == 3000
+            discard conn.exec("insert into abc values (?)", 'b'.repeat(3000))
+            if dbms != "SQLite":
+                check conn.exec("select {fn octet_length(VeryLong)} from abc").firstOrDefault(int) == 3000
             check conn.exec("select {fn length(VeryLong)} from abc").firstOrDefault(int) == 3000
-            discard conn.exec("update abc set VeryLong = VeryLong + ?",
+            let concatOp =
+                if dbms == "SQLite":
+                    "||"
+                else:
+                    "+"
+            discard conn.exec(&"update abc set VeryLong = VeryLong {concatOp} ?",
                                        'a'.repeat(1500))
             check conn.exec("select {fn length(VeryLong)} from abc").firstOrDefault(int) == 4500
             let stmt = conn.prep"select VeryLong from abc"
@@ -988,7 +1035,7 @@ suite "Testing real database schemas":
         type TestObj = object
             veryLong: array[50, char]
         proc testInner =
-            discard conn.exec("insert abc values (?)", "32")
+            discard conn.exec("insert into abc values (?)", "32")
             block:
                 let ds = conn.exec"select VeryLong from abc"
                 var row: TestObj
@@ -1008,7 +1055,7 @@ suite "Testing real database schemas":
             check unicode.utf8To16.len == 4 # Sanity check
             check unicode.utf8To16.utf16To8 == unicode
             block:
-                let stmt = conn.prep("insert TwoValue (SomeName) values (?)")
+                let stmt = conn.prep("insert into TwoValue (SomeName) values (?)")
                 stmt.execOnly(unicode)
             block:
                 let stmt = conn.prep("select {fn length(SomeName)} as leng from TwoValue")
@@ -1024,21 +1071,24 @@ suite "Testing real database schemas":
     test "Multiple result sets in scope fails":
         proc doTest =
             block:
-                let stmt = conn.prep("insert TwoValue (SomeName) values (?)")
+                let stmt = conn.prep("insert into TwoValue (SomeName) values (?)")
                 stmt.execOnly("Hello")
             let stmt1 = conn.prep("select {fn length(SomeName)} as leng from TwoValue")
             discard stmt1.exec
             let stmt2 = conn.prep("select SomeName from TwoValue")
             discard stmt2.exec
-        expect Exception:
-            doTest()
+        if dbms == "SQLite": # seems to allow multi-statements per conn
+            skip
+        else:
+            expect Exception:
+                doTest()
 
     test "Custom query type":
         type TestObj = object
             veryLong: int32
         proc testInner =
-            discard conn.exec("insert abc values (?)", "3")
-            let stmt = conn.prep("select convert(int, VeryLong) as veryLong from abc")
+            discard conn.exec("insert into abc values (?)", "3")
+            let stmt = conn.prep("select cast(VeryLong as int) as veryLong from abc")
             var row: TestObj
             let ds = stmt.exec
             check ds.next
@@ -1057,7 +1107,7 @@ suite "Testing real database schemas":
         proc testInner =
             let inp = TestObj(veryLong: utf8To16"hey")
             block:
-                let stmt = conn.prep("insert abc values (?veryLong)")
+                let stmt = conn.prep("insert into abc values (?veryLong)")
                 stmt.execOnly inp
             block:
                 let stmt = conn.prep("select * from abc")
@@ -1075,7 +1125,7 @@ suite "Testing real database schemas":
         proc testInner =
             let inp = TestObj(someValue: 5, someName: utf8To16"Yup!")
             block:
-                let stmt = conn.prep("insert TwoValue values (?someName, ?someValue)")
+                let stmt = conn.prep("insert into TwoValue values (?someName, ?someValue)")
                 stmt.bindParams(["someName", "someValue"], inp)
                 stmt.execOnly
             block:
@@ -1112,10 +1162,10 @@ suite "Testing real database schemas":
             # Length of 2 checks that only null-terminated string is used, and
             # not the 2 extra null-bytes. Otherwise "Truncation error" would
             # occur in ODBC.
-            discard conn.exec "create table #abc (c1 varchar(2), c2 int)"
+            discard conn.exec "create table temptab (c1 varchar(2), c2 int)"
 
             block:
-                let stmt = conn.prep("insert into #abc values (?, ?)")
+                let stmt = conn.prep("insert into temptab values (?, ?)")
                 var inp = inps[0]
                 stmt.bindParams(inp)
                 stmt.execOnlyKeepParams
@@ -1124,7 +1174,7 @@ suite "Testing real database schemas":
                 stmt.execOnlyKeepParams
 
             block:
-                let rs = conn.exec("select * from #abc")
+                let rs = conn.exec("select * from temptab")
                 var inp: MyObj
                 for i in 0..1:
                     check rs.next(inp)
@@ -1134,7 +1184,7 @@ suite "Testing real database schemas":
 
     test "Parameter key-vals that don't cover all parameters creates error":
         proc testInner =
-            let stmt = conn.prep("insert TwoValue values (?someName, ?someValue)")
+            let stmt = conn.prep("insert into TwoValue values (?someName, ?someValue)")
             check not compiles(stmt.exec(someValue = 3))
         testInner()
 
@@ -1144,7 +1194,7 @@ suite "Testing real database schemas":
             someName: array[2, char]
         proc testInner =
             block:
-                let stmt = conn.prep("insert TwoValue values (?someName, ?someValue)")
+                let stmt = conn.prep("insert into TwoValue values (?someName, ?someValue)")
                 for i in 0..3:
                     let inp = TestObj(someName: toArray[2]($i), someValue: i)
                     stmt.execOnly inp
@@ -1171,13 +1221,16 @@ suite "Testing real database schemas":
                             D4: [0x90'i8, 0xAB'i8, 0xCD'i8, 0xEF'i8,
                                  0x12'i8, 0x34'i8, 0x56'i8, 0x78'i8])
             block:
-                let stmt = conn.prep("insert HasGuid values (?)")
+                let stmt = conn.prep("insert into HasGuid values (?)")
                 stmt.execOnly(guid)
             block:
                 let stmt = conn.prep("select * from HasGuid")
                 let retGuid = stmt.exec.firstOrDefault(GUID)
                 check retGuid == guid
-        doTest()
+        if dbms == "SQLite": # does not support GUIDs
+            skip
+        else:
+            doTest()
 
     test "SQLTables":
         # A demonstration of how to use `colIdx` to only get a subset of the
@@ -1233,7 +1286,7 @@ suite "Iterators":
     setup:
         var conn = setupTestConn()
         proc doSetup =
-            let stmt = conn.prep("insert TwoValue values (?someName, ?someValue)")
+            let stmt = conn.prep("insert into TwoValue values (?someName, ?someValue)")
             for i in 0..3:
                 stmt.execOnly(i, $i)
         doSetup()
